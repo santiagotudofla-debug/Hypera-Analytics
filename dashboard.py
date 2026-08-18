@@ -13,7 +13,20 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Menu Sidebar / Navegação Principal
+# Ocultar o cabeçalho padrão/barra superior do Streamlit para um visual limpo
+st.markdown(
+    """
+    <style>
+        header {visibility: hidden;}
+        .block-container {
+            padding-top: 1.5rem;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# Menu Sidebar / Navegação Principal (Notícias em primeiro lugar)
 st.sidebar.title("📊 Hypera Analytics")
 st.sidebar.markdown("**HYPE3** — Plataforma Profissional de Inteligência Financeira")
 st.sidebar.markdown("---")
@@ -32,7 +45,7 @@ menu_opcao = st.sidebar.radio(
         "🏦 Endividamento",
         "💎 Dividendos",
         "🧮 Valuation",
-        "🏭 Comparação Setorial", 
+        "🏭 Comparação Setorial",
         "🚨 Alertas",
         "🧠 Hypera AI Analyst",
         "🔎 Anomalias",
@@ -52,8 +65,41 @@ st.sidebar.info(
 # ROTEAMENTO E LÓGICA DIRETA DAS PÁGINAS
 # ==========================================
 
-# 1. Visão Geral
-if menu_opcao == "🏠 Visão Geral":
+# 1. Notícias (Primeira tela exibida ao abrir o software)
+if menu_opcao == "📰 Notícias":
+    st.title("📰 Feed de Notícias & Sentimento — HYPE3")
+    st.markdown("Acompanhamento em tempo real de notícias corporativas, comunicados ao mercado e análises de sentimento.")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label="Notícias Analisadas (LTM)", value="142", delta="+12 este mês")
+    with col2:
+        st.metric(label="Sentimento Geral", value="Majoritariamente Positivo", delta="68% Otimista")
+    with col3:
+        st.metric(label="Relevância de Fatos Relevantes", value="100% CVM", delta="Atualizado")
+        
+    st.markdown("---")
+    st.subheader("📋 Últimas Notícias e Comunicados da Companhia")
+    
+    df_noticias = pd.DataFrame({
+        "Data": ["16/08/2026", "14/08/2026", "10/08/2026", "05/08/2026", "01/08/2026"],
+        "Título da Matéria": [
+            "Hypera anuncia expansão de portfólio em medicamentos de alta complexidade",
+            "XP Investimentos eleva preço-alvo para HYPE3 após resultados trimestrais",
+            "CVM aprova novo lote de debêntures para refinanciamento de passivo",
+            "Mercado farmacêutico brasileiro cresce acima da inflação no primeiro semestre",
+            "Diretoria da Hypera reforça compromisso com payout histórico"
+        ],
+        "Fonte": ["InfoMoney", "Valor Econômico", "Portal CVM", "Exame", "Broadcast"],
+        "Sentimento": ["🟢 Positivo", "🟢 Positivo", "🔵 Neutro", "🟢 Positivo", "🟢 Positivo"]
+    })
+    
+    st.dataframe(df_noticias, use_container_width=True, hide_index=True)
+    
+    st.info("💡 **Nota Analítica:** O algoritmo de processamento de linguagem natural (NLP) classifica automaticamente o impacto das notícias recentes na perspetiva de preço do ativo.")
+
+# 2. Visão Geral (Com Gráfico de Velocímetro de Saúde Financeira)
+elif menu_opcao == "🏠 Visão Geral":
     st.title("📊 Painel Analítico CVM — Visão Geral (HYPE3)")
     st.markdown("Acompanhamento consolidado dos indicadores fundamentais, balanços patrimoniais e desempenho recente na CVM.")
     
@@ -68,14 +114,42 @@ if menu_opcao == "🏠 Visão Geral":
         st.metric(label="ROIC", value="12.3%", delta="+0.8%")
         
     st.markdown("---")
-    st.subheader("📋 Resumo do Demonstrativo Financeiro")
-    df_resumo = pd.DataFrame({
-        "Conta Contábil": ["Ativo Total", "Ativo Circulante", "Passivo Total", "Endividamento Bruto"],
-        "Valor (R$ Milhões)": [19450.5, 6210.3, 10820.1, 4500.0]
-    })
-    st.dataframe(df_resumo, use_container_width=True)
+    
+    col_g1, col_g2 = st.columns([1, 1])
+    with col_g1:
+        st.subheader("🎯 Score Consolidado de Saúde Financeira")
+        fig_gauge = go.Figure(go.Indicator(
+            mode = "gauge+number+delta",
+            value = 84.5,
+            delta = {'reference': 80.0, 'increasing': {'color': "green"}},
+            gauge = {
+                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "white"},
+                'bar': {'color': "#00d2ff"},
+                'bgcolor': "rgba(0,0,0,0)",
+                'borderwidth': 2,
+                'bordercolor': "gray",
+                'steps': [
+                    {'range': [0, 50], 'color': 'rgba(214, 39, 40, 0.3)'},
+                    {'range': [50, 75], 'color': 'rgba(255, 127, 14, 0.3)'},
+                    {'range': [75, 100], 'color': 'rgba(44, 160, 44, 0.3)'}],
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 80}},
+            title = {'text': "<b>Índice Geral HYPE3</b><br><span style='font-size:0.8em;color:gray'>Escala de Risco e Solvência (0-100)</span>"}
+        ))
+        fig_gauge.update_layout(template="plotly_dark", height=320, margin=dict(t=80, b=20))
+        st.plotly_chart(fig_gauge, use_container_width=True)
+        
+    with col_g2:
+        st.subheader("📋 Resumo do Demonstrativo Financeiro")
+        df_resumo = pd.DataFrame({
+            "Conta Contábil": ["Ativo Total", "Ativo Circulante", "Passivo Total", "Endividamento Bruto"],
+            "Valor (R$ Milhões)": [19450.5, 6210.3, 10820.1, 4500.0]
+        })
+        st.dataframe(df_resumo, use_container_width=True, hide_index=True)
 
-# 2. Mercado (Cotações e Indicadores de Preço - HYPE3)
+# 3. Mercado
 elif menu_opcao == "📈 Mercado":
     st.title("📈 Módulo de Mercado & Cotações — HYPE3")
     st.markdown("Acompanhamento da evolução de preços, volume negociado e volatilidade do ativo.")
@@ -114,7 +188,7 @@ elif menu_opcao == "📈 Mercado":
     fig_mercado.update_layout(title="Evolução de Preços e Médias Móveis", xaxis_title="Data", yaxis_title="Preço (R$)", template="plotly_dark", height=450)
     st.plotly_chart(fig_mercado, use_container_width=True)
 
-# 3. Análise Técnica (Indicadores de IFR e Bandas de Bollinger)
+# 4. Análise Técnica
 elif menu_opcao == "📊 Análise Técnica":
     st.title("📊 Análise Técnica & Indicadores — HYPE3")
     st.markdown("Estudo de momentum, volatilidade e tendências de curto e médio prazo.")
@@ -162,7 +236,7 @@ elif menu_opcao == "📊 Análise Técnica":
     
     st.info("💡 **Leitura Técnica:** O IFR auxilia na identificação de zonas de exaustão de preço (sobrecompra acima de 70 e sobrevenda abaixo de 30).")
 
-# 4. Fundamentos
+# 5. Fundamentos
 elif menu_opcao == "💰 Fundamentos":
     st.title("💰 Indicadores Fundamentalistas — Hypera Pharma (HYPE3)")
     st.markdown("Análise de rentabilidade, eficiência operacional e margens comparadas à média setorial.")
@@ -214,14 +288,14 @@ elif menu_opcao == "💰 Fundamentos":
     
     st.info("💡 **Nota Analítica:** O gráfico de radar evidencia o posicionamento superior da Hypera Pharma em rentabilidade (ROE/ROIC) e eficiência de margens frente à média das empresas de saúde listadas.")
 
-# 5. Portfólio & Sazonalidade de Vendas (Ajustado para exibição completa)
+# 6. Portfólio & Sazonalidade de Vendas (Ajustado para exibição completa)
 elif menu_opcao == "💊 Portfólio & Sazonalidade":
     st.title("💊 Portfólio de Produtos & Sazonalidade de Vendas (HYPE3)")
     st.markdown("Análise inteligente do fluxo de saída de medicamentos e produtos de saúde conforme o período do ano.")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns([2.0, 1.5, 0.8], gap="small")
     with col1:
-        st.metric(label="Categoria Principal (Receita)", value="Medicamentos Isentos de Prescrição (MIPs)", delta="Líder de Mercado")
+        st.metric(label="Categoria Principal (Receita)", value="Medicamentos Isentos de Prescrição", delta="Líder de Mercado")
     with col2:
         st.metric(label="Pico de Sazonalidade", value="Outono / Inverno (Q2-Q3)", delta="Gripe e Imunidade")
     with col3:
@@ -267,7 +341,7 @@ elif menu_opcao == "💊 Portfólio & Sazonalidade":
     
     st.info("💡 **Nota Estratégica:** Este cruzamento demonstra como a Hypera gerencia seu capital de giro e campanhas de marketing direcionadas para capturar os picos de demanda nas estações mais frias do ano.")
 
-# 6. Resultados (Demonstrações Financeiras)
+# 7. Resultados
 elif menu_opcao == "📑 Resultados":
     st.title("📑 Demonstrações Financeiras — CVM")
     st.markdown("Dados oficiais estruturados da Hypera Pharma (HYPE3).")
@@ -282,12 +356,12 @@ elif menu_opcao == "📑 Resultados":
     })
     
     st.success("Sucesso! Registros financeiros carregados com sucesso.")
-    st.dataframe(df_cvm_sim, use_container_width=True)
+    st.dataframe(df_cvm_sim, use_container_width=True, hide_index=True)
     
     st.markdown("### 📊 Indicadores Principais")
     st.bar_chart(df_cvm_sim, x="ds_conta", y="vl_conta")
 
-# 7. Fluxo de Caixa
+# 8. Fluxo de Caixa
 elif menu_opcao == "💵 Fluxo de Caixa":
     st.title("💵 Demonstração do Fluxo de Caixa (DFC) — HYPE3")
     st.markdown("Análise da capacidade de geração de caixa operacional, investimentos e obrigações financeiras.")
@@ -314,7 +388,7 @@ elif menu_opcao == "💵 Fluxo de Caixa":
         "Participação / Status": ["Excelente Geração", "Investimento Estratégico", "Serviço da Dívida e JCP", "Expansão de Caixa"]
     })
     
-    st.dataframe(df_dfc, use_container_width=True)
+    st.dataframe(df_dfc, use_container_width=True, hide_index=True)
     
     fig_fco = go.Figure(data=[
         go.Bar(
@@ -334,7 +408,7 @@ elif menu_opcao == "💵 Fluxo de Caixa":
     
     st.info("💡 **Nota Analítica:** O Fluxo de Caixa Operacional robusto sustenta a política de investimentos (Capex) e a distribuição de proventos da Hypera Pharma.")
 
-# 8. Endividamento
+# 9. Endividamento
 elif menu_opcao == "🏦 Endividamento":
     st.title("🏦 Análise de Endividamento & Alavancagem — HYPE3")
     st.markdown("Monitoramento da dívida bruta, dívida líquida e capacidade de cobertura financeira da companhia.")
@@ -364,7 +438,7 @@ elif menu_opcao == "🏦 Endividamento":
         "Perfil / Composição": ["15% CP", "85% LP", "Alavancagem Saudável", "Boa Liquidez", "Cobertura Confortável"]
     })
     
-    st.dataframe(df_divida, use_container_width=True)
+    st.dataframe(df_divida, use_container_width=True, hide_index=True)
     
     anos_hist = ["2022", "2023", "2024", "2025", "Atual"]
     alavancagem_hist = [1.80, 1.65, 1.55, 1.60, 1.45]
@@ -389,7 +463,7 @@ elif menu_opcao == "🏦 Endividamento":
     
     st.info("💡 **Nota Analítica:** O indicador de alavancagem abaixo de 2.0x demonstra que a Hypera Pharma mantém uma estrutura de capital conservadora e confortável para cumprir suas obrigações.")
 
-# 9. Dividendos
+# 10. Dividendos
 elif menu_opcao == "💎 Dividendos":
     st.title("💎 Histórico de Dividendos & Proventos — HYPE3")
     st.markdown("Análise de remuneração aos acionistas via Dividendos e Juros sobre o Capital Próprio (JCP).")
@@ -414,7 +488,7 @@ elif menu_opcao == "💎 Dividendos":
         "Dividend Yield Médio (%)": [4.2, 4.5, 4.8, 5.1]
     })
     
-    st.dataframe(df_div, use_container_width=True)
+    st.dataframe(df_div, use_container_width=True, hide_index=True)
     
     fig_div = go.Figure(data=[
         go.Bar(
@@ -436,7 +510,7 @@ elif menu_opcao == "💎 Dividendos":
     
     st.info("💡 **Nota Analítica:** A política de dividendos e JCP da Hypera Pharma reflete consistência e previsibilidade no retorno de caixa aos acionistas.")
 
-# 10. Valuation
+# 11. Valuation
 elif menu_opcao == "🧮 Valuation":
     st.title("🧮 Simulação de Valuation & Múltiplos Históricos — HYPE3")
     st.markdown("Avaliação de ativos corporativos via Fluxo de Caixa Descontado (FCD) e comparação de múltiplos de mercado.")
@@ -483,7 +557,7 @@ elif menu_opcao == "🧮 Valuation":
         "Máximo 5 Anos": [22.4, 3.2, 13.5, 6.2]
     })
     
-    st.dataframe(df_valuation, use_container_width=True)
+    st.dataframe(df_valuation, use_container_width=True, hide_index=True)
     
     fig = go.Figure(data=[
         go.Bar(name='Atual', x=df_valuation['Múltiplo'], y=df_valuation['Atual'], marker_color='#1f77b4'),
@@ -492,7 +566,7 @@ elif menu_opcao == "🧮 Valuation":
     fig.update_layout(barmode='group', title="Comparativo: Múltiplo Atual vs Média Histórica", template="plotly_dark", height=400)
     st.plotly_chart(fig, use_container_width=True)
 
-# 11. Comparação Setorial
+# 12. Comparação Setorial
 elif menu_opcao == "🏭 Comparação Setorial":
     st.title("🏭 Comparação Setorial & Benchmarking — Saúde & Farmacêutico")
     st.markdown("Análise comparativa da Hypera Pharma (HYPE3) frente aos principais pares de mercado e à média setorial.")
@@ -518,7 +592,7 @@ elif menu_opcao == "🏭 Comparação Setorial":
         "P/L (Preço / Lucro)": [14.2, 16.0, 22.4, 28.5, 20.3]
     })
     
-    st.dataframe(df_setor, use_container_width=True)
+    st.dataframe(df_setor, use_container_width=True, hide_index=True)
     
     fig_setor = go.Figure(data=[
         go.Bar(name='Margem Líquida (%)', x=df_setor["Empresa / Ticker"], y=df_setor["Margem Líquida (%)"], marker_color='#1f77b4'),
@@ -535,39 +609,6 @@ elif menu_opcao == "🏭 Comparação Setorial":
     st.plotly_chart(fig_setor, use_container_width=True)
     
     st.info("💡 **Nota Analítica:** A Hypera Pharma destaca-se pela sua forte margem líquida em relação à média do setor de saúde e distribuição farmacêutica na B3.")
-
-# 12. Notícias
-elif menu_opcao == "📰 Notícias":
-    st.title("📰 Feed de Notícias & Sentimento — HYPE3")
-    st.markdown("Acompanhamento em tempo real de notícias corporativas, comunicados ao mercado e análises de sentimento.")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(label="Notícias Analisadas (LTM)", value="142", delta="+12 este mês")
-    with col2:
-        st.metric(label="Sentimento Geral", value="Majoritariamente Positivo", delta="68% Otimista")
-    with col3:
-        st.metric(label="Relevância de Fatos Relevantes", value="100% CVM", delta="Atualizado")
-        
-    st.markdown("---")
-    st.subheader("📋 Últimas Notícias e Comunicados da Companhia")
-    
-    df_noticias = pd.DataFrame({
-        "Data": ["16/08/2026", "14/08/2026", "10/08/2026", "05/08/2026", "01/08/2026"],
-        "Título da Matéria": [
-            "Hypera anuncia expansão de portfólio em medicamentos de alta complexidade",
-            "XP Investimentos eleva preço-alvo para HYPE3 após resultados trimestrais",
-            "CVM aprova novo lote de debêntures para refinanciamento de passivo",
-            "Mercado farmacêutico brasileiro cresce acima da inflação no primeiro semestre",
-            "Diretoria da Hypera reforça compromisso com payout histórico"
-        ],
-        "Fonte": ["InfoMoney", "Valor Econômico", "Portal CVM", "Exame", "Broadcast"],
-        "Sentimento": ["🟢 Positivo", "🟢 Positivo", "🔵 Neutro", "🟢 Positivo", "🟢 Positivo"]
-    })
-    
-    st.dataframe(df_noticias, use_container_width=True)
-    
-    st.info("💡 **Nota Analítica:** O algoritmo de processamento de linguagem natural (NLP) classifica automaticamente o impacto das notícias recentes na perspetiva de preço do ativo.")
 
 # 13. Alertas
 elif menu_opcao == "🚨 Alertas":
@@ -599,7 +640,7 @@ elif menu_opcao == "🚨 Alertas":
         "Severidade": ["Baixa", "Baixa", "Baixa", "Baixa", "Baixa"]
     })
     
-    st.dataframe(df_alertas, use_container_width=True)
+    st.dataframe(df_alertas, use_container_width=True, hide_index=True)
     
     st.info("💡 **Nota Analítica:** O painel de alertas monitora continuamente os parâmetros estatísticos do ativo para emitir avisos antecipados em caso de desvios operacionais ou financeiros.")
 
@@ -667,7 +708,7 @@ elif menu_opcao == "🔎 Anomalias":
         "Status de Auditoria": ["✅ Sem Anomalia", "✅ Sem Anomalia", "✅ Sem Anomalia", "✅ Sem Anomalia", "✅ Sem Anomalia"]
     })
     
-    st.dataframe(df_anomalias, use_container_width=True)
+    st.dataframe(df_anomalias, use_container_width=True, hide_index=True)
     
     st.info("💡 **Nota Analítica:** O modelo estatístico não identificou eventos anômalos ou distorções significativas nos relatórios financeiros recentes submetidos à CVM.")
 
@@ -693,7 +734,7 @@ elif menu_opcao == "🔮 Forecast":
         "Lucro Líquido (R$ Bi)": [1.58, 1.65, 1.74, 1.82, 1.95]
     })
     
-    st.dataframe(df_forecast, use_container_width=True)
+    st.dataframe(df_forecast, use_container_width=True, hide_index=True)
     
     fig_fc = go.Figure(data=[
         go.Scatter(x=df_forecast["Período"], y=df_forecast["Receita Líquida (R$ Bi)"], mode="lines+markers", name="Receita Líquida", line=dict(color="#00d2ff", width=2)),
@@ -735,7 +776,7 @@ elif menu_opcao == "⚙️ Data Pipeline":
         "Frequência": ["Diária", "Sob Demanda", "Sob Demanda", "Automática", "Tempo Real"]
     })
     
-    st.dataframe(df_pipeline, use_container_width=True)
+    st.dataframe(df_pipeline, use_container_width=True, hide_index=True)
     
     st.info("💡 **Nota Analítica:** O pipeline garante a integridade e a rastreabilidade dos dados financeiros desde a publicação oficial na CVM até a exibição no painel.")
 
