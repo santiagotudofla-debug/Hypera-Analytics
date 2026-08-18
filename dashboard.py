@@ -13,19 +13,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Ocultar o cabeçalho padrão/barra superior do Streamlit para um visual limpo
-st.markdown(
-    """
-    <style>
-        header {visibility: hidden;}
-        .block-container {
-            padding-top: 1.5rem;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 # Menu Sidebar / Navegação Principal (Notícias em primeiro lugar)
 st.sidebar.title("📊 Hypera Analytics")
 st.sidebar.markdown("**HYPE3** — Plataforma Profissional de Inteligência Financeira")
