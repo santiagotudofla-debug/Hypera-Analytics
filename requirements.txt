@@ -1,6 +1,11 @@
-streamlit
 pandas
 numpy
-plotly
-yfinance
 requests
+beautifulsoup4
+SQLAlchemy
+psycopg2-binary
+streamlit
+plotly
+python-dotenv
+scikit-learn
+pytrends
