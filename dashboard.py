@@ -9,7 +9,6 @@ import requests
 import zipfile
 import io
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 try:
     from pytrends.request import TrendReq
