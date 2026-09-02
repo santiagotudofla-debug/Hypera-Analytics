@@ -9,6 +9,7 @@ import requests
 import zipfile
 import io
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 try:
     from pytrends.request import TrendReq
@@ -457,7 +458,9 @@ if st.sidebar.button("🔄 Atualizar Dados Agora"):
     st.cache_data.clear()
     st.rerun()
 
-st.sidebar.caption(f"Última execução desta sessão: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+# Ajuste do fuso horário para Brasília (America/Sao_Paulo)
+hora_brasilia = datetime.now(ZoneInfo("America/Sao_Paulo"))
+st.sidebar.caption(f"Última execução desta sessão: {hora_brasilia.strftime('%d/%m/%Y %H:%M:%S')}")
 
 menu_opcao = st.sidebar.radio(
     "Navegação",
