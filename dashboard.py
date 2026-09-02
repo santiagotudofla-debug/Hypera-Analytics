@@ -215,6 +215,73 @@ def empresa_esta_no_indice(df_indice, ticker_base="HYPE"):
 
 
 @st.cache_data(ttl=86400)
+def carregar_status_pacto_global(participant_id="142300"):
+    """Verifica ao vivo, na página pública do UN Global Compact, o status de adesão
+    da Hypera S.A. (Pacto Global da ONU) — participante nº 142300, confirmado via
+    busca manual em 31/08/2026. ATENÇÃO: faz parsing de texto de uma página HTML
+    pública (não há API oficial), então é frágil a mudanças de layout do site —
+    validar ao rodar localmente e ajustar os padrões de busca se necessário."""
+    import re
+    url = f"https://unglobalcompact.org/what-is-gc/participants/{participant_id}"
+    try:
+        response = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+        if response.status_code != 200:
+            return {}
+        texto = re.sub(r"<[^>]+>", " ", response.text)
+        texto = re.sub(r"\s+", " ", texto)
+
+        def extrair(rotulo, parar_em):
+            padrao = re.escape(rotulo) + r"\s*:?\s*(.+?)\s*" + parar_em
+            m = re.search(padrao, texto)
+            return m.group(1).strip() if m else None
+
+        return {
+            "status": extrair("Global Compact Status", r"Participant Since"),
+            "desde": extrair("Participant Since", r"(Letter of Commitment|Next Communication)"),
+            "proxima_cop": extrair(r"due on", r"(Affiliated|Help us)"),
+        }
+    except Exception:
+        return {}
+
+
+# Conteúdo curado e citado sobre atuação por ODS — NÃO é dado ao vivo (iniciativas específicas
+# mudam por relatório anual, não em tempo real). Verificado manualmente via busca em 31/08/2026.
+# Fontes: hypera.com.br/sustentabilidade, hypera.com.br/responsabilidade-social,
+# unglobalcompact.org/what-is-gc/participants/142300, doisamaisfarma.com.br (S&P Global Sustainability
+# Yearbook 2024), ri.hypera.com.br/en/hypera-pharma/esg_integrity.
+ODS_DESTAQUE_HYPERA = [
+    {
+        "ODS": "ODS 3 — Saúde e Bem-Estar",
+        "Evidência Real e Citada": "Núcleo do próprio negócio: maior portfólio de medicamentos isentos de prescrição do país; centro de P&D (Brainfarma) dedicado a novos tratamentos.",
+    },
+    {
+        "ODS": "ODS 4 — Educação de Qualidade",
+        "Evidência Real e Citada": "Patrocínio de 10 bolsistas via Instituto Semear (desde 2023); apoio ao Instituto Horas da Vida.",
+    },
+    {
+        "ODS": "ODS 6 — Água Potável e Saneamento",
+        "Evidência Real e Citada": "Programas declarados de 'segurança hídrica' e redução de consumo de água nas subsidiárias (hypera.com.br/sustentabilidade).",
+    },
+    {
+        "ODS": "ODS 12 — Consumo e Produção Responsáveis",
+        "Evidência Real e Citada": "Logística reversa de embalagens e reciclagem de resíduos; Mantecorp Skincare/Inspire360 compensam 100% do GEE das entregas de e-commerce.",
+    },
+    {
+        "ODS": "ODS 13 — Ação Contra a Mudança Climática",
+        "Evidência Real e Citada": "Integra o ICO2 B3 (checado ao vivo acima); duas subestações de energia limpa em Anápolis (GO, 2023); redução declarada de emissões de GEE.",
+    },
+    {
+        "ODS": "ODS 15 — Vida Terrestre",
+        "Evidência Real e Citada": "Investimento em recuperação de áreas degradadas da bacia hidrográfica do Rio Araguaia (GO) — citado no S&P Global Sustainability Yearbook 2024.",
+    },
+    {
+        "ODS": "ODS 17 — Parcerias e Meios de Implementação",
+        "Evidência Real e Citada": "Signatária do Pacto Global da ONU desde 12/2020 (checado ao vivo acima); parcerias com ONGs (Sementes do Amanhã, Instituto Horas da Vida).",
+    },
+]
+
+
+@st.cache_data(ttl=86400)
 def carregar_demonstrativos_cvm_real(ano, tipo="DRE"):
     """Baixa e processa dados reais de ITR (Demonstrações Financeiras Trimestrais)
     do portal de dados abertos da CVM em tempo real. tipo pode ser DRE, BPA, BPP ou DFC."""
@@ -336,6 +403,7 @@ df_indice_ise = carregar_composicao_indice_b3("ISEE")
 df_indice_ico2 = carregar_composicao_indice_b3("ICO2")
 hypera_no_ise = empresa_esta_no_indice(df_indice_ise, "HYPE")
 hypera_no_ico2 = empresa_esta_no_indice(df_indice_ico2, "HYPE")
+status_pacto_global = carregar_status_pacto_global()
 
 ano_atual = datetime.now().year
 df_cvm_real = carregar_demonstrativos_cvm_real(ano_atual, tipo="DRE")
@@ -729,6 +797,30 @@ elif menu_opcao == "Sustentabilidade & ODS":
         "Checagem feita consultando, em tempo real, a carteira teórica vigente publicada pela própria B3 "
         "(mesma API pública usada para IBOV/IBRX). Não é uma estimativa: é a lista oficial do dia."
     )
+
+    st.markdown("---")
+    st.subheader("🤝 Adesão ao Pacto Global da ONU (checado ao vivo)")
+    if status_pacto_global.get("status"):
+        col1, col2, col3 = st.columns(3)
+        col1.metric(label="Status", value=status_pacto_global.get("status", "N/D"))
+        col2.metric(label="Signatária Desde", value=status_pacto_global.get("desde", "N/D"))
+        col3.metric(label="Próxima COP Devida", value=status_pacto_global.get("proxima_cop", "N/D"))
+        st.caption("Fonte: unglobalcompact.org/what-is-gc/participants/142300 (perfil público da Hypera S.A.)")
+    else:
+        st.warning(
+            "Não foi possível confirmar o status ao vivo no Pacto Global neste momento. "
+            "Verificado manualmente em 31/08/2026: Hypera S.A. é signatária ativa desde 12/2020 "
+            "(participante nº 142300)."
+        )
+
+    st.markdown("---")
+    st.subheader("🎯 Onde a Hypera se Destaca por ODS (conteúdo curado e citado, não é dado ao vivo)")
+    st.caption(
+        "As linhas abaixo foram levantadas e verificadas manualmente em fontes oficiais (site da Hypera, "
+        "perfil no Pacto Global, S&P Global Sustainability Yearbook) — não são atualizadas automaticamente, "
+        "já que essas iniciativas são reportadas por ciclo anual, não em tempo real."
+    )
+    st.dataframe(pd.DataFrame(ODS_DESTAQUE_HYPERA), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.subheader("🌐 Pontuação ESG Detalhada (Yahoo Finance / Sustainalytics)")
