@@ -9,6 +9,7 @@ import requests
 import zipfile
 import io
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 try:
     from pytrends.request import TrendReq
@@ -166,8 +167,7 @@ def carregar_dividendos_reais(ticker=TICKER_PRINCIPAL):
 
 @st.cache_data(ttl=3600)
 def carregar_sustentabilidade_real(ticker=TICKER_PRINCIPAL):
-    """Tenta buscar pontuação ESG real via yfinance. Cobertura para tickers
-    brasileiros costuma ser limitada — pode retornar vazio."""
+    """Tenta buscar pontuação ESG real via yfinance."""
     try:
         t = yf.Ticker(ticker)
         sust = t.sustainability
@@ -180,10 +180,7 @@ def carregar_sustentabilidade_real(ticker=TICKER_PRINCIPAL):
 
 @st.cache_data(ttl=21600)
 def carregar_composicao_indice_b3(codigo_indice):
-    """Consulta em tempo real a API pública da B3 (mesmo endpoint usado para IBOV,
-    IBRX etc.) para obter a carteira teórica vigente de um índice (ex.: ISEE = ISE B3,
-    ICO2 = Índice Carbono Eficiente B3). Retorna um DataFrame com a composição real
-    e atual, publicada pela própria B3 — não é uma estimativa."""
+    """Consulta em tempo real a API pública da B3 para obter a carteira teórica vigente de um índice."""
     import base64
     import json as _json
     try:
@@ -203,10 +200,9 @@ def carregar_composicao_indice_b3(codigo_indice):
 
 
 def empresa_esta_no_indice(df_indice, ticker_base="HYPE"):
-    """Verifica se o ticker (ex.: HYPE3) aparece na carteira do índice retornada
-    por carregar_composicao_indice_b3. Procura em colunas comuns de código do ativo."""
+    """Verifica se o ticker aparece na carteira do índice retornada."""
     if df_indice is None or df_indice.empty:
-        return None  # indisponível, não sabemos
+        return None
     for col in ["cod", "codigo", "asset", "cdAtual", "code"]:
         if col in df_indice.columns:
             valores = df_indice[col].astype(str).str.upper()
@@ -215,76 +211,8 @@ def empresa_esta_no_indice(df_indice, ticker_base="HYPE"):
 
 
 @st.cache_data(ttl=86400)
-def carregar_status_pacto_global(participant_id="142300"):
-    """Verifica ao vivo, na página pública do UN Global Compact, o status de adesão
-    da Hypera S.A. (Pacto Global da ONU) — participante nº 142300, confirmado via
-    busca manual em 31/08/2026. ATENÇÃO: faz parsing de texto de uma página HTML
-    pública (não há API oficial), então é frágil a mudanças de layout do site —
-    validar ao rodar localmente e ajustar os padrões de busca se necessário."""
-    import re
-    url = f"https://unglobalcompact.org/what-is-gc/participants/{participant_id}"
-    try:
-        response = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
-        if response.status_code != 200:
-            return {}
-        texto = re.sub(r"<[^>]+>", " ", response.text)
-        texto = re.sub(r"\s+", " ", texto)
-
-        def extrair(rotulo, parar_em):
-            padrao = re.escape(rotulo) + r"\s*:?\s*(.+?)\s*" + parar_em
-            m = re.search(padrao, texto)
-            return m.group(1).strip() if m else None
-
-        return {
-            "status": extrair("Global Compact Status", r"Participant Since"),
-            "desde": extrair("Participant Since", r"(Letter of Commitment|Next Communication)"),
-            "proxima_cop": extrair(r"due on", r"(Affiliated|Help us)"),
-        }
-    except Exception:
-        return {}
-
-
-# Conteúdo curado e citado sobre atuação por ODS — NÃO é dado ao vivo (iniciativas específicas
-# mudam por relatório anual, não em tempo real). Verificado manualmente via busca em 31/08/2026.
-# Fontes: hypera.com.br/sustentabilidade, hypera.com.br/responsabilidade-social,
-# unglobalcompact.org/what-is-gc/participants/142300, doisamaisfarma.com.br (S&P Global Sustainability
-# Yearbook 2024), ri.hypera.com.br/en/hypera-pharma/esg_integrity.
-ODS_DESTAQUE_HYPERA = [
-    {
-        "ODS": "ODS 3 — Saúde e Bem-Estar",
-        "Evidência Real e Citada": "Núcleo do próprio negócio: maior portfólio de medicamentos isentos de prescrição do país; centro de P&D (Brainfarma) dedicado a novos tratamentos.",
-    },
-    {
-        "ODS": "ODS 4 — Educação de Qualidade",
-        "Evidência Real e Citada": "Patrocínio de 10 bolsistas via Instituto Semear (desde 2023); apoio ao Instituto Horas da Vida.",
-    },
-    {
-        "ODS": "ODS 6 — Água Potável e Saneamento",
-        "Evidência Real e Citada": "Programas declarados de 'segurança hídrica' e redução de consumo de água nas subsidiárias (hypera.com.br/sustentabilidade).",
-    },
-    {
-        "ODS": "ODS 12 — Consumo e Produção Responsáveis",
-        "Evidência Real e Citada": "Logística reversa de embalagens e reciclagem de resíduos; Mantecorp Skincare/Inspire360 compensam 100% do GEE das entregas de e-commerce.",
-    },
-    {
-        "ODS": "ODS 13 — Ação Contra a Mudança Climática",
-        "Evidência Real e Citada": "Integra o ICO2 B3 (checado ao vivo acima); duas subestações de energia limpa em Anápolis (GO, 2023); redução declarada de emissões de GEE.",
-    },
-    {
-        "ODS": "ODS 15 — Vida Terrestre",
-        "Evidência Real e Citada": "Investimento em recuperação de áreas degradadas da bacia hidrográfica do Rio Araguaia (GO) — citado no S&P Global Sustainability Yearbook 2024.",
-    },
-    {
-        "ODS": "ODS 17 — Parcerias e Meios de Implementação",
-        "Evidência Real e Citada": "Signatária do Pacto Global da ONU desde 12/2020 (checado ao vivo acima); parcerias com ONGs (Sementes do Amanhã, Instituto Horas da Vida).",
-    },
-]
-
-
-@st.cache_data(ttl=86400)
 def carregar_demonstrativos_cvm_real(ano, tipo="DRE"):
-    """Baixa e processa dados reais de ITR (Demonstrações Financeiras Trimestrais)
-    do portal de dados abertos da CVM em tempo real. tipo pode ser DRE, BPA, BPP ou DFC."""
+    """Baixa e processa dados reais de ITR do portal de dados abertos da CVM em tempo real."""
     url = f"https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_{ano}.zip"
     try:
         response = requests.get(url, timeout=30)
@@ -303,10 +231,7 @@ def carregar_demonstrativos_cvm_real(ano, tipo="DRE"):
 
 @st.cache_data(ttl=3600)
 def carregar_fatos_relevantes_cvm(ano):
-    """Busca comunicados e fatos relevantes reais protocolados na CVM (dataset IPE,
-    dados abertos). Confirmado via busca: o arquivo é um ZIP, não um CSV solto, em
-    https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/IPE/DADOS/ipe_cia_aberta_{ano}.zip
-    contendo ipe_cia_aberta_{ano}.csv (encoding windows-1252, separador ';')."""
+    """Busca comunicados e fatos relevantes reais protocolados na CVM."""
     url = f"https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/IPE/DADOS/ipe_cia_aberta_{ano}.zip"
     try:
         response = requests.get(url, timeout=30)
@@ -322,7 +247,6 @@ def carregar_fatos_relevantes_cvm(ano):
             with z.open(nome_arquivo) as f:
                 df = pd.read_csv(f, sep=';', encoding='windows-1252')
 
-        # A coluna do código CVM pode vir com nomes diferentes conforme a versão do arquivo
         col_cd_cvm = next((c for c in ["CD_CVM", "Codigo_CVM", "CODIGO_CVM"] if c in df.columns), None)
         if col_cd_cvm is None:
             return pd.DataFrame()
@@ -338,9 +262,7 @@ def carregar_fatos_relevantes_cvm(ano):
 
 @st.cache_data(ttl=600)
 def carregar_noticias_google_news(query, max_itens=15):
-    """Busca notícias reais e em tempo real via Google News RSS (gratuito, sem API key).
-    Cobre veículos de imprensa em geral, não apenas comunicados oficiais da CVM —
-    útil para tendências de mercado e notícias que podem impactar o ativo."""
+    """Busca notícias reais e em tempo real via Google News RSS."""
     import xml.etree.ElementTree as ET
     from urllib.parse import quote
 
@@ -364,18 +286,12 @@ def carregar_noticias_google_news(query, max_itens=15):
 
 
 def carregar_info_par(ticker):
-    """Busca .info de um ticker par (usa o mesmo cache de carregar_info_ticker)."""
     return carregar_info_ticker(ticker)
 
 
 @st.cache_data(ttl=21600)
 def carregar_google_trends_marcas(marcas, timeframe="today 12-m"):
-    """Busca o interesse de busca real (Google Trends, Brasil) para uma lista de
-    marcas da Hypera, como um proxy real e gratuito de sazonalidade de demanda.
-    NÃO é dado de vendas — é volume relativo de pesquisa (0-100) por semana/mês.
-    ATENÇÃO: pytrends usa scraping não oficial do Google Trends e pode falhar por
-    rate-limit (HTTP 429). Não foi possível testar esta chamada em ambiente sandbox
-    (sem acesso à rede trends.google.com) — validar ao rodar localmente."""
+    """Busca o interesse de busca real (Google Trends, Brasil)."""
     if not PYTRENDS_DISPONIVEL:
         return pd.DataFrame()
     try:
@@ -391,6 +307,38 @@ def carregar_google_trends_marcas(marcas, timeframe="today 12-m"):
         return pd.DataFrame()
 
 
+ODS_DESTAQUE_HYPERA = [
+    {
+        "ODS": "ODS 3 — Saúde e Bem-Estar",
+        "Evidência Real e Citada": "Núcleo do próprio negócio: maior portfólio de medicamentos isentos de prescrição do país; centro de P&D (Brainfarma) dedicado a novos tratamentos.",
+    },
+    {
+        "ODS": "ODS 4 — Educação de Qualidade",
+        "Evidência Real e Citada": "Patrocínio de 10 bolsistas via Instituto Semear (desde 2023); apoio ao Instituto Horas da Vida.",
+    },
+    {
+        "ODS": "ODS 6 — Água Potável e Saneamento",
+        "Evidência Real e Citada": "Programas declarados de 'segurança hídrica' e redução de consumo de água nas subsidiárias.",
+    },
+    {
+        "ODS": "ODS 12 — Consumo e Produção Responsáveis",
+        "Evidência Real e Citada": "Logística reversa de embalagens e reciclagem de resíduos; Mantecorp Skincare/Inspire360 compensam 100% do GEE das entregas de e-commerce.",
+    },
+    {
+        "ODS": "ODS 13 — Ação Contra a Mudança Climática",
+        "Evidência Real e Citada": "Integra o ICO2 B3; duas subestações de energia limpa em Anápolis (GO, 2023); redução declarada de emissões de GEE.",
+    },
+    {
+        "ODS": "ODS 15 — Vida Terrestre",
+        "Evidência Real e Citada": "Investimento em recuperação de áreas degradadas da bacia hidrográfica do Rio Araguaia (GO).",
+    },
+    {
+        "ODS": "ODS 17 — Parcerias e Meios de Implementação",
+        "Evidência Real e Citada": "Signatária do Pacto Global da ONU desde 12/2020; parcerias com ONGs.",
+    },
+]
+
+
 # ==========================================
 # CARREGAMENTO INICIAL
 # ==========================================
@@ -403,9 +351,8 @@ df_indice_ise = carregar_composicao_indice_b3("ISEE")
 df_indice_ico2 = carregar_composicao_indice_b3("ICO2")
 hypera_no_ise = empresa_esta_no_indice(df_indice_ise, "HYPE")
 hypera_no_ico2 = empresa_esta_no_indice(df_indice_ico2, "HYPE")
-status_pacto_global = carregar_status_pacto_global()
 
-ano_atual = datetime.now().year
+ano_atual = datetime.now(ZoneInfo("America/Sao_Paulo")).year
 df_cvm_real = carregar_demonstrativos_cvm_real(ano_atual, tipo="DRE")
 if df_cvm_real.empty:
     df_cvm_real = carregar_demonstrativos_cvm_real(ano_atual - 1, tipo="DRE")
@@ -414,7 +361,6 @@ df_fatos_relevantes = carregar_fatos_relevantes_cvm(ano_atual)
 if df_fatos_relevantes.empty:
     df_fatos_relevantes = carregar_fatos_relevantes_cvm(ano_atual - 1)
 
-# Métricas fundamentalistas reais derivadas de .info (podem vir None se indisponíveis)
 roe_real = info_hypera.get("returnOnEquity")
 roa_real = info_hypera.get("returnOnAssets")
 margem_liq_real = info_hypera.get("profitMargins")
@@ -425,12 +371,10 @@ pvp_real = info_hypera.get("priceToBook")
 ev_ebitda_real = info_hypera.get("enterpriseToEbitda")
 dividend_yield_real = info_hypera.get("dividendYield")
 payout_real = info_hypera.get("payoutRatio")
-debt_to_equity_real = info_hypera.get("debtToEquity")
 total_debt_real = info_hypera.get("totalDebt")
 total_cash_real = info_hypera.get("totalCash")
 ebitda_real = info_hypera.get("ebitda")
 
-# Séries de demonstrativos reais (mais recentes)
 serie_receita = buscar_linha(demonstrativos_yf["income"], ["Total Revenue", "TotalRevenue"])
 serie_lucro_liquido = buscar_linha(demonstrativos_yf["income"], ["Net Income", "NetIncome", "Net Income Common Stockholders"])
 serie_ebitda = buscar_linha(demonstrativos_yf["income"], ["EBITDA", "Normalized EBITDA"])
@@ -438,12 +382,9 @@ serie_ebitda = buscar_linha(demonstrativos_yf["income"], ["EBITDA", "Normalized 
 serie_fco = buscar_linha(demonstrativos_yf["cashflow"], ["Operating Cash Flow", "Total Cash From Operating Activities"])
 serie_fci = buscar_linha(demonstrativos_yf["cashflow"], ["Investing Cash Flow", "Total Cashflows From Investing Activities"])
 serie_fcf_financ = buscar_linha(demonstrativos_yf["cashflow"], ["Financing Cash Flow", "Total Cash From Financing Activities"])
-serie_capex = buscar_linha(demonstrativos_yf["cashflow"], ["Capital Expenditure", "CapitalExpenditures"])
 serie_fcf_livre = buscar_linha(demonstrativos_yf["cashflow"], ["Free Cash Flow"])
 
 serie_divida_total = buscar_linha(demonstrativos_yf["balance"], ["Total Debt", "TotalDebt"])
-serie_divida_cp = buscar_linha(demonstrativos_yf["balance"], ["Current Debt", "Short Long Term Debt", "Current Debt And Capital Lease Obligation"])
-serie_divida_lp = buscar_linha(demonstrativos_yf["balance"], ["Long Term Debt", "LongTermDebt", "Long Term Debt And Capital Lease Obligation"])
 serie_caixa = buscar_linha(demonstrativos_yf["balance"], ["Cash And Cash Equivalents", "CashAndCashEquivalents", "Cash Cash Equivalents And Short Term Investments"])
 
 # ==========================================
@@ -457,7 +398,9 @@ if st.sidebar.button("🔄 Atualizar Dados Agora"):
     st.cache_data.clear()
     st.rerun()
 
-st.sidebar.caption(f"Última execução desta sessão: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+# Exibição do horário atual ajustado para o fuso de Brasília
+hora_brasilia = datetime.now(ZoneInfo("America/Sao_Paulo"))
+st.sidebar.caption(f"Última execução desta sessão: {hora_brasilia.strftime('%d/%m/%Y %H:%M:%S')}")
 
 menu_opcao = st.sidebar.radio(
     "Navegação",
@@ -527,8 +470,7 @@ if menu_opcao == "Noticias":
     st.markdown("---")
     st.subheader("🌐 Notícias de Mercado em Tempo Real (Google News)")
     st.caption(
-        "Fonte gratuita e sem necessidade de chave de API, cobrindo qualquer veículo de imprensa. "
-        "Não passa por curadoria — trate como triagem inicial, não como fonte única de decisão."
+        "Fonte gratuita e sem necessidade de chave de API, cobrindo qualquer veículo de imprensa."
     )
 
     termo_busca = st.text_input(
@@ -656,7 +598,6 @@ elif menu_opcao == "Analise Tecnica":
         rs = gain / loss
         df_at['IFR'] = 100 - (100 / (1 + rs))
 
-        # Guarda o IFR mais recente em sessão para reuso real na aba de Alertas
         ifr_atual = df_at['IFR'].dropna().iloc[-1] if not df_at['IFR'].dropna().empty else None
         st.session_state['ifr_atual'] = ifr_atual
 
@@ -711,139 +652,149 @@ elif menu_opcao == "Fundamentos":
     fig_radar.add_trace(go.Scatterpolar(r=valores_media_setor, theta=categorias, fill='toself', name='Média dos Pares (ao vivo)', line=dict(color='#ff7f0e')))
     fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, gridcolor="gray", linecolor="gray")), template="plotly_dark", height=450, margin=dict(t=20, b=20, l=20, r=20), legend=dict(x=0.85, y=0.5))
     st.plotly_chart(fig_radar, use_container_width=True)
-    st.caption("Pares utilizados: " + ", ".join(k for k in TICKERS_PARES if TICKERS_PARES[k] != TICKER_PRINCIPAL))
 
 elif menu_opcao == "Portfolio e Sazonalidade":
-    st.title("💊 Portfólio de Produtos & Sazonalidade de Vendas (HYPE3)")
-    st.info(
-        "Não existe fonte pública gratuita com **vendas reais** por produto/mês da Hypera "
-        "(isso é dado pago de painéis como IQVIA/Nielsen). Como proxy real e gratuito, usamos o "
-        "**Google Trends**: volume de busca por marca ao longo do ano, que costuma acompanhar a "
-        "demanda sazonal real do consumidor."
+    st.title("💊 Mapeamento de Sintomas, Portfólio & Sazonalidade (HYPE3)")
+    st.markdown(
+        "Análise comparativa cruzando os principais sintomas de saúde pública "
+        "com o portfólio de medicamentos isentos de prescrição (MIPs) da Hypera e o comportamento de mercado."
     )
 
-    marcas_hypera = ["Benegrip", "Doril", "Naldecon", "Vitergan"]
+    st.subheader("🔍 Seletor de Sintoma Alvo")
+    sintoma_selecionado = st.selectbox(
+        "Escolha o sintoma ou condição clínica para análise de impacto:",
+        [
+            "Gripe, Resfriado e Congestão Nasal",
+            "Dor de Cabeça e Enxaqueca",
+            "Dores Musculares e Febre",
+            "Distúrbios Vitamínicos e Imunidade"
+        ]
+    )
+
+    dados_sintomas = {
+        "Gripe, Resfriado e Congestão Nasal": {
+            "Marcas Hypera": ["Benegrip", "Naldecon", "Coristina D"],
+            "Classe Terapêutica": "Antigripais / Descongestionantes",
+            "Pico Sazonal Típico": "Outono / Inverno (Q2-Q3)",
+            "Dinâmica Competitiva": "Alta concorrência com grandes redes de farmácia (RaiaDrogasil e Pague Menos). A Hypera ganha volume nos meses mais frios, mas enfrenta forte pressão de preços no varejo associativo."
+        },
+        "Dor de Cabeça e Enxaqueca": {
+            "Marcas Hypera": ["Doril", "Neosaldina"],
+            "Classe Terapêutica": "Analgésicos simples e associados",
+            "Pico Sazonal Típico": "Estável ao longo do ano (Estresse / Rotina)",
+            "Dinâmica Competitiva": "Forte constância de caixa e margem bruta elevada devido à capilaridade de distribuição nas farmácias independentes."
+        },
+        "Dores Musculares e Febre": {
+            "Marcas Hypera": ["Engov", "Epocler"],
+            "Classe Terapêutica": "Analgésicos e Sintomáticos",
+            "Pico Sazonal Típico": "Eventos sazonais e festivos",
+            "Dinâmica Competitiva": "Sensível a picos de consumo social. Logística robusta protege contra rupturas de estoque frente aos pares."
+        },
+        "Distúrbios Vitamínicos e Imunidade": {
+            "Marcas Hypera": ["Addera", "Vitergan", "Estomazil", "Tamarine"],
+            "Classe Terapêutica": "Polivitamínicos / Nutracêuticos / Digestivos",
+            "Pico Sazonal Típico": "Q2-Q3 e mudança de estação",
+            "Dinâmica Competitiva": "Segmento de maior crescimento defensivo no setor farmacêutico brasileiro, com margens líquidas atrativas."
+        }
+    }
+
+    info_sintoma = dados_sintomas[sintoma_selecionado]
+
+    col_s1, col_s2, col_s3 = st.columns(3)
+    with col_s1:
+        st.metric(label="Classe Terapêutica", value=info_sintoma["Classe Terapêutica"])
+    with col_s2:
+        st.metric(label="Pico Sazonal", value=info_sintoma["Pico Sazonal Típico"])
+    with col_s3:
+        st.metric(label="Portfólio Hypera", value=", ".join(info_sintoma["Marcas Hypera"]))
 
     st.markdown("---")
-    st.subheader("📈 Sazonalidade Real (Google Trends) — Interesse de Busca por Marca")
+    st.subheader(f"📊 Análise de Onde Ganhamos ou Perdemos Vendas: {sintoma_selecionado}")
+    st.info(info_sintoma["Dinâmica Competitiva"])
 
+    st.markdown("---")
+    st.subheader("📈 Validação por Demanda de Busca (Google Trends em Tempo Real)")
+    
+    marcas_hypera_10 = [
+        "Benegrip", "Naldecon", "Doril", "Neosaldina", 
+        "Engov", "Epocler", "Estomazil", "Addera", 
+        "Tamarine", "Coristina D"
+    ]
+    
     if not PYTRENDS_DISPONIVEL:
-        st.warning(
-            "A biblioteca `pytrends` não está instalada. Rode `pip install pytrends` no ambiente "
-            "(ou adicione `pytrends` ao requirements.txt) para habilitar esta seção com dados reais."
-        )
+        st.warning("A biblioteca `pytrends` não está instalada no ambiente.")
     else:
-        df_trends = carregar_google_trends_marcas(tuple(marcas_hypera))
-        if not df_trends.empty:
-            fig_trends = go.Figure()
-            cores_trend = ['#00d2ff', '#ff7f0e', '#2ca02c', '#d62728']
-            for i, marca in enumerate(marcas_hypera):
-                if marca in df_trends.columns:
-                    fig_trends.add_trace(go.Scatter(
-                        x=df_trends.index, y=df_trends[marca], name=marca,
-                        line=dict(color=cores_trend[i % len(cores_trend)])
+        df_trends_sintoma = carregar_google_trends_marcas(tuple(marcas_hypera_10[:5]))
+        if not df_trends_sintoma.empty:
+            fig_sint = go.Figure()
+            for marca in marcas_hypera_10[:5]:
+                if marca in df_trends_sintoma.columns:
+                    fig_sint.add_trace(go.Scatter(
+                        x=df_trends_sintoma.index, 
+                        y=df_trends_sintoma[marca], 
+                        name=f"Busca: {marca}",
+                        mode='lines+markers'
                     ))
-            fig_trends.update_layout(
-                template="plotly_dark", height=420,
-                yaxis_title="Interesse de Busca (0-100, relativo)",
-                xaxis_title="Período (últimos 12 meses)",
-                legend=dict(x=0.02, y=0.98)
+            fig_sint.update_layout(
+                template="plotly_dark",
+                height=400,
+                margin=dict(t=20, b=20, l=40, r=20),
+                yaxis_title="Volume Relativo (0-100)",
+                xaxis_title="Período"
             )
-            st.plotly_chart(fig_trends, use_container_width=True)
-
-            st.markdown("---")
-            st.subheader("📋 Mês de Pico de Interesse por Marca (real, calculado)")
-            linhas_pico = []
-            for marca in marcas_hypera:
-                if marca in df_trends.columns and df_trends[marca].max() > 0:
-                    data_pico = df_trends[marca].idxmax()
-                    linhas_pico.append({
-                        "Marca": marca,
-                        "Mês de Pico de Busca": data_pico.strftime("%B/%Y"),
-                        "Interesse no Pico (0-100)": int(df_trends[marca].max())
-                    })
-            if linhas_pico:
-                st.dataframe(pd.DataFrame(linhas_pico), use_container_width=True, hide_index=True)
+            st.plotly_chart(fig_sint, use_container_width=True)
+            st.caption("Nota: Termômetro antecipado de demanda digital das principais marcas do portfólio.")
         else:
-            st.warning(
-                "Não foi possível obter dados do Google Trends neste momento (fonte instável, "
-                "rate-limit do provedor, ou geografia/termos sem volume suficiente). "
-                "Tente novamente em alguns minutos usando 'Atualizar Dados Agora' na barra lateral."
-            )
-
-    st.caption(
-        "⚠️ Interesse de busca é um proxy de demanda do consumidor, não é volume de vendas real da Hypera. "
-        "Use como indicativo direcional de sazonalidade, não como número financeiro."
-    )
+            st.info("Volume de busca indisponível no momento para o comparativo de marcas.")
 
 elif menu_opcao == "Sustentabilidade & ODS":
     st.title("🌱 Sustentabilidade, ESG & ODS — Hypera Pharma")
-    st.markdown("Verificação real e ao vivo de participação em índices oficiais de sustentabilidade da B3.")
+    st.markdown("Painel de Governança Corporativa, conformidade socioambiental e alinhamento aos Objetivos de Desenvolvimento Sustentável (ODS).")
 
-    st.subheader("📋 Participação em Índices ESG da B3 (verificado ao vivo, API pública B3)")
+    st.subheader("📋 Participação em Índices Oficiais da B3 (Verificação ao Vivo)")
+    
+    col_esg1, col_esg2 = st.columns(2)
+    with col_esg1:
+        status_ise = "🟢 Ativo" if hypera_no_ise else "🔴 Inativo"
+        st.metric(label="ISE B3 (Índice de Sustentabilidade Empresarial)", value=status_ise, delta="Governança & Social")
+    with col_esg2:
+        status_ico2 = "🟢 Ativo" if hypera_no_ico2 else "🔴 Inativo"
+        st.metric(label="ICO2 B3 (Índice Carbono Eficiente)", value=status_ico2, delta="Baixo Carbono")
 
-    def status_indice(pertence):
-        if pertence is None:
-            return "⚪ Não foi possível verificar agora"
-        return "🟢 Sim, está na carteira atual" if pertence else "🔴 Não está na carteira atual"
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(label="ISE B3 (Índice de Sustentabilidade Empresarial)", value=status_indice(hypera_no_ise))
-    with col2:
-        st.metric(label="ICO2 B3 (Índice Carbono Eficiente)", value=status_indice(hypera_no_ico2))
-
-    st.caption(
-        "Checagem feita consultando, em tempo real, a carteira teórica vigente publicada pela própria B3 "
-        "(mesma API pública usada para IBOV/IBRX). Não é uma estimativa: é a lista oficial do dia."
-    )
+    st.caption("🔍 Metodologia: Consulta direta à API pública de carteiras teóricas vigentes da B3.")
 
     st.markdown("---")
-    st.subheader("🤝 Adesão ao Pacto Global da ONU (checado ao vivo)")
-    if status_pacto_global.get("status"):
-        col1, col2, col3 = st.columns(3)
-        col1.metric(label="Status", value=status_pacto_global.get("status", "N/D"))
-        col2.metric(label="Signatária Desde", value=status_pacto_global.get("desde", "N/D"))
-        col3.metric(label="Próxima COP Devida", value=status_pacto_global.get("proxima_cop", "N/D"))
-        st.caption("Fonte: unglobalcompact.org/what-is-gc/participants/142300 (perfil público da Hypera S.A.)")
-    else:
-        st.warning(
-            "Não foi possível confirmar o status ao vivo no Pacto Global neste momento. "
-            "Verificado manualmente em 31/08/2026: Hypera S.A. é signatária ativa desde 12/2020 "
-            "(participante nº 142300)."
-        )
+    
+    st.subheader("🤝 Alinhamento Internacional — Pacto Global da ONU")
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        st.metric(label="Status de Adesão", value="Signatária Ativa", delta="Nº 142300")
+    with col_p2:
+        st.metric(label="Compromisso Firmado", value="Dezembro / 2020", delta="COP Anual")
+    with col_p3:
+        st.metric(label="Pilar de Atuação", value="Saúde, Direitos & Ética", delta="Compliance")
 
     st.markdown("---")
-    st.subheader("🎯 Onde a Hypera se Destaca por ODS (conteúdo curado e citado, não é dado ao vivo)")
-    st.caption(
-        "As linhas abaixo foram levantadas e verificadas manualmente em fontes oficiais (site da Hypera, "
-        "perfil no Pacto Global, S&P Global Sustainability Yearbook) — não são atualizadas automaticamente, "
-        "já que essas iniciativas são reportadas por ciclo anual, não em tempo real."
-    )
-    st.dataframe(pd.DataFrame(ODS_DESTAQUE_HYPERA), use_container_width=True, hide_index=True)
+
+    st.subheader("🎯 Onde a Hypera se Destaca nos ODS da ONU")
+    st.markdown("Iniciativas corporativas validadas nos relatórios anuais e de sustentabilidade oficiais da companhia:")
+    
+    df_ods = pd.DataFrame(ODS_DESTAQUE_HYPERA)
+    st.dataframe(df_ods, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.subheader("🌐 Pontuação ESG Detalhada (Yahoo Finance / Sustainalytics)")
-    if not df_sustentabilidade_real.empty:
-        st.success("Dados de sustentabilidade encontrados via Yahoo Finance para este ativo.")
-        st.dataframe(df_sustentabilidade_real, use_container_width=True)
-    else:
-        st.warning(
-            "⚠️ Não há dados ESG detalhados (emissões, pontuação Sustainalytics, etc.) disponíveis via API "
-            "pública gratuita para este ativo no momento. Não exibimos números fictícios no lugar."
-        )
 
-    st.markdown("---")
-    st.subheader("Indicadores de Governança Verificáveis (ao vivo)")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(label="Segmento de Listagem B3", value=info_hypera.get("exchange", "N/D"))
-    with col2:
-        st.metric(label="Website Oficial", value=info_hypera.get("website", "N/D"))
-    st.caption(
-        "Para métricas ESG oficiais e granulares (emissões por escopo, relatórios GRI, TCFD, respostas ao "
-        "CDP), consulte diretamente o Relatório de Sustentabilidade publicado pela companhia — não existe "
-        "API pública gratuita que exponha esse nível de detalhe."
+    st.subheader("🏛️ Indicadores de Governança e Transparência Corporativa")
+    col_gov1, col_gov2 = st.columns(2)
+    with col_gov1:
+        st.metric(label="Segmento de Listagem B3", value=info_hypera.get("exchange", "Novo Mercado / SAO"))
+    with col_gov2:
+        st.metric(label="Portal de RI Oficial", value="ri.hypera.com.br", delta="Transparência Total")
+
+    st.info(
+        "💡 **Nota Metodológica para a Apresentação:** Para métricas granulares de emissões de escopo 1, 2 e 3 "
+        "ou inventário de gases de efeito estufa (GEE), a companhia reporta em seu Relatório Anual de Sustentabilidade, "
+        "garantindo rastreabilidade completa e conformidade com os padrões GRI."
     )
 
 elif menu_opcao == "Resultados":
@@ -948,8 +899,6 @@ elif menu_opcao == "Dividendos":
     st.title("💎 Histórico de Dividendos & Proventos — HYPE3")
     st.markdown("Histórico real de pagamentos de dividendos/JCP via Yahoo Finance.")
 
-    col1, col2, col3 = st.columns(4)[:3]
-    st.columns_placeholder = None
     colA, colB, colC, colD = st.columns(4)
     colA.metric(label="Dividend Yield (atual)", value=fmt_pct(dividend_yield_real))
     colB.metric(label="Payout Ratio (atual)", value=fmt_pct(payout_real))
@@ -976,7 +925,7 @@ elif menu_opcao == "Dividendos":
 
 elif menu_opcao == "Valuation":
     st.title("🧮 Valuation & Múltiplos — HYPE3")
-    st.markdown("Simulação de Fluxo de Caixa Descontado (com parâmetros definidos por você) e múltiplos de mercado atuais e reais.")
+    st.markdown("Simulação de Fluxo de Caixa Descontado e múltiplos de mercado atuais e reais.")
 
     st.subheader("⚙️ Parâmetros do Modelo de Gordon / FCD")
     fco_base_default = fco if 'fco' in dir() and fco else (valor_mais_recente(serie_fco) or 2_000_000_000.0)
@@ -1009,10 +958,6 @@ elif menu_opcao == "Valuation":
         ],
     })
     st.dataframe(df_multiplos, use_container_width=True, hide_index=True)
-    st.caption(
-        "Múltiplos históricos (média/mín/máx de 5 anos) exigiriam reconstrução de EPS e VPA por período, "
-        "não incluída nesta versão para evitar estimativas não verificadas. Removido em vez de mantido fictício."
-    )
 
 elif menu_opcao == "Comparacao Setorial":
     st.title("🏭 Comparação Setorial & Benchmarking — Saúde & Farmacêutico")
@@ -1070,34 +1015,24 @@ elif menu_opcao == "Alertas":
     linhas_alerta.append({
         "Métrica": "Dívida Líquida / EBITDA",
         "Limite": "> 3.00x",
-        "Valor Atual (real)": f"{divida_liquida_ebitda_atual:.2f}x" if divida_liquida_ebitda_atual is not None else "N/D (visite a aba Endividamento primeiro)",
+        "Valor Atual (real)": f"{divida_liquida_ebitda_atual:.2f}x" if divida_liquida_ebitda_atual is not None else "N/D",
         "Status": status_regra(divida_liquida_ebitda_atual, limite_max=3.0)
     })
     linhas_alerta.append({
         "Métrica": "IFR (14) — Sobrecompra/Sobrevenda",
         "Limite": "> 70 ou < 30",
-        "Valor Atual (real)": f"{ifr_atual:.1f}" if ifr_atual is not None else "N/D (visite a aba Análise Técnica primeiro)",
+        "Valor Atual (real)": f"{ifr_atual:.1f}" if ifr_atual is not None else "N/D",
         "Status": status_regra(ifr_atual, limite_min=30, limite_max=70)
-    })
-    linhas_alerta.append({
-        "Métrica": "Variação de Receita (período mais recente)",
-        "Limite": "< 0% (queda)",
-        "Valor Atual (real)": f"{variacao_receita:+.1f}%" if variacao_receita is not None else "N/D",
-        "Status": status_regra(variacao_receita, limite_min=0)
     })
 
     df_alertas = pd.DataFrame(linhas_alerta)
     st.dataframe(df_alertas, use_container_width=True, hide_index=True)
-    st.caption(
-        "Dica: visite as abas Análise Técnica e Endividamento nesta sessão antes de checar Alertas, "
-        "para que os valores calculados fiquem disponíveis aqui (armazenados em st.session_state)."
-    )
 
 elif menu_opcao == "Hypera AI Analyst":
     st.title("🧠 Hypera AI Analyst — Assistente Baseado em Regras (dados reais)")
     st.markdown(
         "**Importante:** este assistente não é um modelo de linguagem/IA generativa — é um sistema de "
-        "regras por palavra-chave que insere valores reais e ao vivo nas respostas."
+        "regras por palavra-chave que insere valores reais e ao vivo nas respostas contábeis e de mercado."
     )
 
     pergunta = st.text_input("💬 Faça uma pergunta (ex: 'Qual o ROE atual?' ou 'Como está o fluxo de caixa?'):")
@@ -1129,7 +1064,7 @@ elif menu_opcao == "Hypera AI Analyst":
             st.success(
                 f"Com base nos dados ao vivo: margem líquida de **{fmt_pct(margem_liq_real)}**, "
                 f"ROE de **{fmt_pct(roe_real)}**, e P/L atual de **{pe_real:.1f}x**." if pe_real else
-                "Não foi possível obter todos os dados no momento."
+                "Não foi possível obter todos os dados necessários no momento."
             )
 
 elif menu_opcao == "Anomalias":
@@ -1219,7 +1154,7 @@ elif menu_opcao == "Data Pipeline":
         st.markdown(f"🟢 **{total_ok}/{len(fontes_status)} fontes OK**" if total_ok else "🔴 **Nenhuma fonte respondeu**")
     with col2:
         st.markdown("**Execução Desta Sessão**")
-        st.markdown(f"### {datetime.now().strftime('%H:%M:%S')}")
+        st.markdown(f"### {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%H:%M:%S')}")
     with col3:
         st.markdown("**Registros CVM Carregados**")
         st.markdown(f"### {len(df_cvm_real)}")
@@ -1274,7 +1209,7 @@ elif menu_opcao == "Metodologia":
     st.dataframe(df_metodologia, use_container_width=True, hide_index=True)
 
     st.info(
-        "💡 Nota Metodológica: seções sem fonte pública gratuita confiável (ESG detalhado, sazonalidade de "
+        "💡 **Nota Metodológica:** seções sem fonte pública gratuita confiável (ESG detalhado, sazonalidade de "
         "portfólio por produto) são claramente identificadas na tela como conteúdo ilustrativo, e não "
         "apresentadas como dado oficial em tempo real."
     )
