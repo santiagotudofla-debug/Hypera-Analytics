@@ -10,6 +10,11 @@ import zipfile
 import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
 
 try:
     from pytrends.request import TrendReq
@@ -48,9 +53,10 @@ TICKER_PRINCIPAL = "HYPE3.SA"
 CD_CVM_HYPERA = 21431
 TICKERS_PARES = {
     "Hypera Pharma (HYPE3)": "HYPE3.SA",
-    "Blau Farmacêutica (BLAU3)": "BLAU3.SA",
-    "Pague Menos (PGMN3)": "PGMN3.SA",
     "RaiaDrogasil (RADL3)": "RADL3.SA",
+    "Pague Menos (PGMN3)": "PGMN3.SA",
+    "Blau Farmacêutica (BLAU3)": "BLAU3.SA",
+    "Panvel / Dimed (PNVL3)": "PNVL3.SA",
 }
 
 # ==========================================
@@ -58,8 +64,7 @@ TICKERS_PARES = {
 # ==========================================
 def buscar_linha(df, nomes_possiveis):
     """Procura uma linha (métrica) num DataFrame de demonstrativos do yfinance
-    testando múltiplos nomes possíveis, já que a nomenclatura muda entre versões
-    da biblioteca. Retorna a Series (indexada pelas datas) ou None."""
+    testando múltiplos nomes possíveis."""
     if df is None or df.empty:
         return None
     for nome in nomes_possiveis:
@@ -130,7 +135,7 @@ def carregar_info_ticker(ticker=TICKER_PRINCIPAL):
 
 @st.cache_data(ttl=3600)
 def carregar_demonstrativos_yf(ticker=TICKER_PRINCIPAL):
-    """Busca DRE, Balanço Patrimonial e Fluxo de Caixa (anual e trimestral) reais via yfinance."""
+    """Busca DRE, Balanço Patrimonial e Fluxo de Caixa reais via yfinance."""
     resultado = {
         "income": pd.DataFrame(), "income_q": pd.DataFrame(),
         "balance": pd.DataFrame(), "balance_q": pd.DataFrame(),
@@ -398,34 +403,38 @@ if st.sidebar.button("🔄 Atualizar Dados Agora"):
     st.cache_data.clear()
     st.rerun()
 
-# Exibição do horário atual ajustado para o fuso de Brasília
 hora_brasilia = datetime.now(ZoneInfo("America/Sao_Paulo"))
 st.sidebar.caption(f"Última execução desta sessão: {hora_brasilia.strftime('%d/%m/%Y %H:%M:%S')}")
 
+opcoes_navegacao = [
+    "Noticias",
+    "Visao Geral",
+    "Mercado",
+    "Analise Tecnica",
+    "Fundamentos",
+    "Portfolio e Sazonalidade",
+    "Sustentabilidade & ODS",
+    "Resultados",
+    "Hypera AI Analyst",
+    "Anomalias",
+    "Forecast",
+    "Relatório Diretoria",
+    "Data Pipeline",
+    "Metodologia"
+]
+
+if "menu_ativo" not in st.session_state:
+    st.session_state["menu_ativo"] = "Noticias"
+
+indice_atual = opcoes_navegacao.index(st.session_state["menu_ativo"]) if st.session_state["menu_ativo"] in opcoes_navegacao else 0
+
 menu_opcao = st.sidebar.radio(
     "Navegação",
-    [
-        "Noticias",
-        "Visao Geral",
-        "Mercado",
-        "Analise Tecnica",
-        "Fundamentos",
-        "Portfolio e Sazonalidade",
-        "Sustentabilidade & ODS",
-        "Resultados",
-        "Fluxo de Caixa",
-        "Endividamento",
-        "Dividendos",
-        "Valuation",
-        "Comparacao Setorial",
-        "Alertas",
-        "Hypera AI Analyst",
-        "Anomalias",
-        "Forecast",
-        "Data Pipeline",
-        "Metodologia"
-    ]
+    opcoes_navegacao,
+    index=indice_atual
 )
+
+st.session_state["menu_ativo"] = menu_opcao
 
 st.sidebar.markdown("---")
 st.sidebar.info(
@@ -462,21 +471,11 @@ if menu_opcao == "Noticias":
             use_container_width=True, hide_index=True
         )
     else:
-        st.warning(
-            "Não foi possível carregar o feed real de fatos relevantes da CVM neste momento "
-            "(fonte instável ou formato do arquivo mudou). Nenhum dado fictício é exibido nesta versão."
-        )
+        st.warning("Não foi possível carregar o feed real de fatos relevantes da CVM neste momento.")
 
     st.markdown("---")
     st.subheader("🌐 Notícias de Mercado em Tempo Real (Google News)")
-    st.caption(
-        "Fonte gratuita e sem necessidade de chave de API, cobrindo qualquer veículo de imprensa."
-    )
-
-    termo_busca = st.text_input(
-        "Termo de busca (ajuste para focar em tendências específicas de mercado):",
-        value="Hypera Pharma HYPE3"
-    )
+    termo_busca = st.text_input("Termo de busca:", value="Hypera Pharma HYPE3")
 
     df_noticias_reais = carregar_noticias_google_news(termo_busca)
     if not df_noticias_reais.empty:
@@ -485,7 +484,7 @@ if menu_opcao == "Noticias":
             st.caption(f"{row['Fonte']} · {row['Data']}")
             st.markdown("---")
     else:
-        st.warning("Não foi possível carregar notícias no momento. Tente novamente em alguns instantes.")
+        st.warning("Não foi possível carregar notícias no momento.")
 
 elif menu_opcao == "Visao Geral":
     st.title("📊 Painel Analítico — Visão Geral (HYPE3)")
@@ -533,10 +532,7 @@ elif menu_opcao == "Visao Geral":
                     'bordercolor': "gray",
                 }
             ))
-            fig_gauge.update_layout(
-                title={'text': "P/L Atual (real, ao vivo)", 'x': 0.5, 'xanchor': 'center'},
-                template="plotly_dark", height=320, margin=dict(t=50, b=10)
-            )
+            fig_gauge.update_layout(title={'text': "P/L Atual (real, ao vivo)", 'x': 0.5, 'xanchor': 'center'}, template="plotly_dark", height=320, margin=dict(t=50, b=10))
             st.plotly_chart(fig_gauge, use_container_width=True)
         else:
             st.info("P/L não disponível no momento via Yahoo Finance.")
@@ -549,7 +545,7 @@ elif menu_opcao == "Visao Geral":
             if colunas_show:
                 st.dataframe(df_cvm_real[colunas_show].head(5), use_container_width=True, hide_index=True)
         else:
-            st.warning("Não foi possível conectar à CVM neste momento. Nenhum dado fictício é exibido no lugar.")
+            st.warning("Não foi possível conectar à CVM neste momento.")
 
 elif menu_opcao == "Mercado":
     st.title("📈 Módulo de Mercado & Cotações Reais — HYPE3 (B3)")
@@ -615,43 +611,104 @@ elif menu_opcao == "Analise Tecnica":
         st.warning("Sem dados de mercado disponíveis para calcular os indicadores técnicos.")
 
 elif menu_opcao == "Fundamentos":
-    st.title("💰 Indicadores Fundamentalistas — Hypera Pharma (HYPE3)")
-    st.markdown("Rentabilidade e margens obtidas em tempo real via Yahoo Finance (.info).")
+    st.title("💰 Fundamentos — Hypera Pharma (HYPE3)")
+    st.markdown("Análise unificada da rentabilidade, margens e estrutura de divisões e subsidiárias.")
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("ROE", fmt_pct(roe_real))
-    col2.metric("ROA", fmt_pct(roa_real))
-    col3.metric("Margem Líquida", fmt_pct(margem_liq_real))
-    col4.metric("Margem EBITDA", fmt_pct(margem_ebitda_real))
+    tab_fund, tab_setor, tab_subs = st.tabs(["📊 Indicadores & Radar", "🏭 Benchmarking Setorial", "🏢 Divisões & Subsidiárias"])
 
-    st.markdown("---")
-    st.subheader("🕸️ Radar: Hypera vs Média dos Pares Reais (dados ao vivo)")
+    with tab_fund:
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("ROE", fmt_pct(roe_real))
+        col2.metric("ROA", fmt_pct(roa_real))
+        col3.metric("Margem Líquida", fmt_pct(margem_liq_real))
+        col4.metric("Margem EBITDA", fmt_pct(margem_ebitda_real))
 
-    categorias = ['ROE (%)', 'Margem Líquida (%)', 'Margem Operacional (%)', 'Margem EBITDA (%)']
-    valores_hypera = [
-        (roe_real or 0) * 100,
-        (margem_liq_real or 0) * 100,
-        (margem_operacional_real or 0) * 100,
-        (margem_ebitda_real or 0) * 100,
-    ]
+        st.markdown("---")
+        st.subheader("🕸️ Radar: Hypera vs Média dos Pares Reais (dados ao vivo)")
 
-    valores_pares = {c: [] for c in categorias}
-    for nome_par, tk_par in TICKERS_PARES.items():
-        if tk_par == TICKER_PRINCIPAL:
-            continue
-        info_par = carregar_info_par(tk_par)
-        valores_pares['ROE (%)'].append((info_par.get('returnOnEquity') or 0) * 100)
-        valores_pares['Margem Líquida (%)'].append((info_par.get('profitMargins') or 0) * 100)
-        valores_pares['Margem Operacional (%)'].append((info_par.get('operatingMargins') or 0) * 100)
-        valores_pares['Margem EBITDA (%)'].append((info_par.get('ebitdaMargins') or 0) * 100)
+        categorias = ['ROE (%)', 'Margem Líquida (%)', 'Margem Operacional (%)', 'Margem EBITDA (%)']
+        valores_hypera = [
+            (roe_real or 0) * 100,
+            (margem_liq_real or 0) * 100,
+            (margem_operacional_real or 0) * 100,
+            (margem_ebitda_real or 0) * 100,
+        ]
 
-    valores_media_setor = [np.mean(valores_pares[c]) if valores_pares[c] else 0 for c in categorias]
+        valores_pares = {c: [] for c in categorias}
+        for nome_par, tk_par in TICKERS_PARES.items():
+            if tk_par == TICKER_PRINCIPAL:
+                continue
+            info_par = carregar_info_par(tk_par)
+            valores_pares['ROE (%)'].append((info_par.get('returnOnEquity') or 0) * 100)
+            valores_pares['Margem Líquida (%)'].append((info_par.get('profitMargins') or 0) * 100)
+            valores_pares['Margem Operacional (%)'].append((info_par.get('operatingMargins') or 0) * 100)
+            valores_pares['Margem EBITDA (%)'].append((info_par.get('ebitdaMargins') or 0) * 100)
 
-    fig_radar = go.Figure()
-    fig_radar.add_trace(go.Scatterpolar(r=valores_hypera, theta=categorias, fill='toself', name='Hypera Pharma (HYPE3)', line=dict(color='#00d2ff')))
-    fig_radar.add_trace(go.Scatterpolar(r=valores_media_setor, theta=categorias, fill='toself', name='Média dos Pares (ao vivo)', line=dict(color='#ff7f0e')))
-    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, gridcolor="gray", linecolor="gray")), template="plotly_dark", height=450, margin=dict(t=20, b=20, l=20, r=20), legend=dict(x=0.85, y=0.5))
-    st.plotly_chart(fig_radar, use_container_width=True)
+        valores_media_setor = [np.mean(valores_pares[c]) if valores_pares[c] else 0 for c in categorias]
+
+        fig_radar = go.Figure()
+        fig_radar.add_trace(go.Scatterpolar(r=valores_hypera, theta=categorias, fill='toself', name='Hypera Pharma (HYPE3)', line=dict(color='#00d2ff')))
+        fig_radar.add_trace(go.Scatterpolar(r=valores_media_setor, theta=categorias, fill='toself', name='Média dos Pares (ao vivo)', line=dict(color='#ff7f0e')))
+        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, gridcolor="gray", linecolor="gray")), template="plotly_dark", height=450, margin=dict(t=20, b=20, l=20, r=20), legend=dict(x=0.85, y=0.5))
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+    with tab_setor:
+        st.subheader("🏭 Comparação Setorial (Top 5 Empresas de Referência na B3)")
+        linhas = []
+        for nome_par, tk_par in TICKERS_PARES.items():
+            info_par = carregar_info_par(tk_par)
+            linhas.append({
+                "Empresa / Ticker": nome_par,
+                "Margem Líquida (%)": round((info_par.get("profitMargins") or 0) * 100, 1),
+                "ROE (%)": round((info_par.get("returnOnEquity") or 0) * 100, 1),
+                "P/L": round(info_par.get("trailingPE"), 1) if info_par.get("trailingPE") else None,
+                "Dívida/Patrimônio": round(info_par.get("debtToEquity"), 1) if info_par.get("debtToEquity") else None,
+            })
+        df_setor_completo = pd.DataFrame(linhas)
+
+        st.dataframe(df_setor_completo, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.subheader("📊 Benchmarking: Margem Líquida vs ROE (real)")
+        fig_setor_bench = go.Figure(data=[
+            go.Bar(name='Margem Líquida (%)', x=df_setor_completo['Empresa / Ticker'], y=df_setor_completo['Margem Líquida (%)'], marker_color='#1f77b4'),
+            go.Bar(name='ROE (%)', x=df_setor_completo['Empresa / Ticker'], y=df_setor_completo['ROE (%)'], marker_color='#2ca02c')
+        ])
+        fig_setor_bench.update_layout(barmode='group', template="plotly_dark", height=450, margin=dict(t=20, b=40, l=40, r=20), yaxis_title="Percentual (%)", xaxis_title="Empresas", legend=dict(x=0.85, y=0.95))
+        st.plotly_chart(fig_setor_bench, use_container_width=True)
+
+    with tab_subs:
+        st.subheader("🏢 Principais Divisões e Subsidiárias da Hypera Pharma")
+        st.markdown("Detalhamento estrutural, portfólio de marcas e valores estimados de participação interna de mercado das divisões do grupo:")
+
+        df_subsidiarias = pd.DataFrame([
+            {
+                "Divisão / Subsidiária": "Brainfarma",
+                "Foco Principal": "Complexo Industrial e P&D",
+                "Localização": "Anápolis (Goiás)",
+                "Participação / Contribuição": "Alta escala fabril (fábrica central do grupo)"
+            },
+            {
+                "Divisão / Subsidiária": "Consumer Health (Saúde ao Consumidor)",
+                "Foco Principal": "Medicamentos Isentos de Prescrição (MIPs)",
+                "Localização": "Nacional",
+                "Descrição das Marcas": "Benegrip, Naldecon, Coristina D, Engov, Epocler, Estomazil, Addera"
+            },
+            {
+                "Divisão / Subsidiária": "Mantecorp Farmasa",
+                "Foco Principal": "Produtos de Prescrição Médica",
+                "Localização": "Nacional",
+                "Descrição das Marcas": "Medicamentos prescritos em várias especialidades médicas"
+            },
+            {
+                "Divisão / Subsidiária": "Mantecorp Skincare e Simple Organic",
+                "Foco Principal": "Dermocosméticos e Cuidados com a Pele",
+                "Localização": "Nacional",
+                "Descrição das Marcas": "Dermocosméticos de alta performance e beleza sustentável"
+            }
+        ])
+
+        st.dataframe(df_subsidiarias, use_container_width=True, hide_index=True)
 
 elif menu_opcao == "Portfolio e Sazonalidade":
     st.title("💊 Mapeamento de Sintomas, Portfólio & Sazonalidade (HYPE3)")
@@ -798,235 +855,144 @@ elif menu_opcao == "Sustentabilidade & ODS":
     )
 
 elif menu_opcao == "Resultados":
-    st.title("📑 Demonstrações Financeiras — CVM (Dados Reais)")
-    st.markdown("Dados oficiais estruturados da Hypera Pharma (HYPE3), direto do portal de dados abertos da CVM.")
+    st.title("📑 Central de Resultados & Fundamentos — HYPE3")
+    st.markdown("Visão consolidada de desempenho financeiro, fluxo de caixa, alavancagem, proventos e valuation em tempo real.")
 
-    if not df_cvm_real.empty:
-        st.success(f"Sucesso! {len(df_cvm_real)} registros reais carregados da CVM.")
-        colunas_disp = [c for c in ["CD_CVM", "DS_CONTA", "VL_CONTA", "DT_REFER", "DT_FIM_EXERC"] if c in df_cvm_real.columns]
-        st.dataframe(df_cvm_real[colunas_disp] if colunas_disp else df_cvm_real, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.subheader("📊 Principais Contas (dados reais CVM)")
-        if "DS_CONTA" in df_cvm_real.columns and "VL_CONTA" in df_cvm_real.columns:
-            df_plot = df_cvm_real[["DS_CONTA", "VL_CONTA"]].drop_duplicates(subset="DS_CONTA").head(10)
-            fig_res = go.Figure(data=[go.Bar(x=df_plot['DS_CONTA'], y=df_plot['VL_CONTA'], marker_color='#5bc0de')])
-            fig_res.update_layout(template="plotly_dark", height=400, margin=dict(t=20, b=120, l=40, r=20), xaxis_title="", yaxis_title="VL_CONTA (R$)")
-            st.plotly_chart(fig_res, use_container_width=True)
-    else:
-        st.warning("Não foi possível carregar os demonstrativos da CVM neste momento.")
-
-    st.markdown("---")
-    st.subheader("📊 Receita e Lucro Líquido (Yahoo Finance, real)")
-    if serie_receita is not None or serie_lucro_liquido is not None:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Receita Líquida (último período)", fmt_moeda_bi(valor_mais_recente(serie_receita)))
-        with col2:
-            st.metric("Lucro Líquido (último período)", fmt_moeda_bi(valor_mais_recente(serie_lucro_liquido)))
-    else:
-        st.info("Demonstrativos do Yahoo Finance indisponíveis no momento.")
-
-elif menu_opcao == "Fluxo de Caixa":
-    st.title("💵 Demonstração do Fluxo de Caixa (DFC) — HYPE3")
-    st.markdown("Dados reais extraídos do demonstrativo de fluxo de caixa via Yahoo Finance.")
-
-    fco = valor_mais_recente(serie_fco)
-    fci = valor_mais_recente(serie_fci)
-    fcf_financ = valor_mais_recente(serie_fcf_financ)
-    fcf_livre = valor_mais_recente(serie_fcf_livre)
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric(label="Caixa Operacional (FCO)", value=fmt_moeda_bi(fco))
-    col2.metric(label="Caixa de Investimento (FCI)", value=fmt_moeda_mi(fci))
-    col3.metric(label="Fluxo de Caixa Livre (FCF)", value=fmt_moeda_bi(fcf_livre))
-
-    st.markdown("---")
-    if any(v is not None for v in [fco, fci, fcf_financ]):
-        st.subheader("📊 Composição do Fluxo de Caixa (último período reportado, real)")
-        componentes = ["FCO (Operacional)", "FCI (Investimento)", "FCF (Financiamento)"]
-        valores_dfc = [fco or 0, fci or 0, fcf_financ or 0]
-        cores_barras = ['#2ca02c', '#d62728', '#ff7f0e']
-        fig_dfc = go.Figure(data=[go.Bar(x=componentes, y=valores_dfc, marker_color=cores_barras)])
-        fig_dfc.update_layout(template="plotly_dark", height=400, margin=dict(t=20, b=20, l=40, r=20), yaxis_title="R$", xaxis_title="Componentes")
-        st.plotly_chart(fig_dfc, use_container_width=True)
-
-        if not demonstrativos_yf["cashflow"].empty and serie_fco is not None and len(serie_fco) > 1:
-            st.subheader("📈 Evolução do FCO por Período (real, últimos exercícios)")
-            fig_evol = go.Figure(data=[go.Scatter(
-                x=[str(c.date()) if hasattr(c, "date") else str(c) for c in serie_fco.index],
-                y=serie_fco.values, mode="lines+markers", line=dict(color="#00d2ff")
-            )])
-            fig_evol.update_layout(template="plotly_dark", height=350, yaxis_title="FCO (R$)")
-            st.plotly_chart(fig_evol, use_container_width=True)
-    else:
-        st.warning("Não foi possível obter o demonstrativo de fluxo de caixa no momento.")
-
-elif menu_opcao == "Endividamento":
-    st.title("🏛️ Análise de Endividamento & Alavancagem — HYPE3")
-    st.markdown("Dívida bruta, caixa e alavancagem reais, via Yahoo Finance.")
-
-    caixa_atual = total_cash_real if total_cash_real is not None else valor_mais_recente(serie_caixa)
-    divida_atual = total_debt_real if total_debt_real is not None else valor_mais_recente(serie_divida_total)
-    divida_liquida = None
-    if divida_atual is not None and caixa_atual is not None:
-        divida_liquida = divida_atual - caixa_atual
-
-    divida_liquida_ebitda = None
-    if divida_liquida is not None and ebitda_real:
-        divida_liquida_ebitda = divida_liquida / ebitda_real
-    st.session_state['divida_liquida_ebitda'] = divida_liquida_ebitda
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric(label="Dívida Bruta", value=fmt_moeda_bi(divida_atual))
-    col2.metric(label="Caixa e Equivalentes", value=fmt_moeda_bi(caixa_atual))
-    col3.metric(label="Dívida Líquida", value=fmt_moeda_bi(divida_liquida))
-    col4.metric(label="Dívida Líq. / EBITDA", value=f"{divida_liquida_ebitda:.2f}x" if divida_liquida_ebitda is not None else "N/D")
-
-    st.markdown("---")
-    if serie_divida_total is not None and len(serie_divida_total) > 1:
-        st.subheader("📊 Evolução Real da Dívida Bruta por Exercício")
-        fig_div = go.Figure(data=[go.Bar(
-            x=[str(c.date()) if hasattr(c, "date") else str(c) for c in serie_divida_total.index],
-            y=serie_divida_total.values, marker_color='#1f77b4'
-        )])
-        fig_div.update_layout(template="plotly_dark", height=400, margin=dict(t=20, b=20, l=40, r=20), yaxis_title="R$", xaxis_title="Exercício")
-        st.plotly_chart(fig_div, use_container_width=True)
-    else:
-        st.info("Série histórica de dívida indisponível no momento via Yahoo Finance.")
-
-elif menu_opcao == "Dividendos":
-    st.title("💎 Histórico de Dividendos & Proventos — HYPE3")
-    st.markdown("Histórico real de pagamentos de dividendos/JCP via Yahoo Finance.")
-
-    colA, colB, colC, colD = st.columns(4)
-    colA.metric(label="Dividend Yield (atual)", value=fmt_pct(dividend_yield_real))
-    colB.metric(label="Payout Ratio (atual)", value=fmt_pct(payout_real))
-    if not df_dividendos_real.empty:
-        colC.metric(label="Último Provento", value=f"R$ {df_dividendos_real.iloc[-1]['Valor por Ação (R$)']:.2f}")
-        colD.metric(label="Total de Pagamentos (histórico)", value=str(len(df_dividendos_real)))
-    else:
-        colC.metric(label="Último Provento", value="N/D")
-        colD.metric(label="Total de Pagamentos", value="N/D")
-
-    st.markdown("---")
-    if not df_dividendos_real.empty:
-        st.subheader("📋 Histórico Real de Pagamentos (por data)")
-        st.dataframe(df_dividendos_real.sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.subheader("📊 Total de Proventos por Ano (real, somado a partir dos pagamentos)")
-        df_por_ano = df_dividendos_real.groupby("Ano")["Valor por Ação (R$)"].sum().reset_index()
-        fig_div_hist = go.Figure(data=[go.Bar(x=df_por_ano['Ano'].astype(str), y=df_por_ano['Valor por Ação (R$)'], marker_color='#2ca02c')])
-        fig_div_hist.update_layout(template="plotly_dark", height=400, margin=dict(t=20, b=20, l=40, r=20), yaxis_title="R$ por ação", xaxis_title="Ano")
-        st.plotly_chart(fig_div_hist, use_container_width=True)
-    else:
-        st.warning("Não foi possível obter o histórico real de dividendos no momento.")
-
-elif menu_opcao == "Valuation":
-    st.title("🧮 Valuation & Múltiplos — HYPE3")
-    st.markdown("Simulação de Fluxo de Caixa Descontado e múltiplos de mercado atuais e reais.")
-
-    st.subheader("⚙️ Parâmetros do Modelo de Gordon / FCD")
-    fco_base_default = fco if 'fco' in dir() and fco else (valor_mais_recente(serie_fco) or 2_000_000_000.0)
-
-    col_v1, col_v2, col_v3 = st.columns(3)
-    with col_v1:
-        fco_base = st.number_input("Fluxo de Caixa Base (R$)", value=float(fco_base_default), step=100_000_000.0)
-    with col_v2:
-        wacc_val = st.slider("Taxa de Desconto / WACC (%)", 5.0, 20.0, 11.5, 0.5)
-    with col_v3:
-        g_val = st.slider("Taxa de Crescimento Perpetuidade (g %)", 0.0, 6.0, 3.0, 0.5)
-
-    if st.button("Processar Cálculo de Valuation"):
-        if wacc_val > g_val:
-            valor_firma = fco_base / ((wacc_val - g_val) / 100.0)
-            st.success(f"Valor Intrínseco Calculado da Firma (Gordon): R$ {valor_firma:,.2f}")
-        else:
-            st.error("WACC deve ser maior que a taxa de crescimento (g) para o modelo convergir.")
-
-    st.markdown("---")
-    st.subheader("📋 Múltiplos Atuais (ao vivo, Yahoo Finance)")
-
-    df_multiplos = pd.DataFrame({
-        "Múltiplo": ["P/L", "P/VP", "EV/EBITDA", "Dividend Yield"],
-        "Hypera (atual, real)": [
-            f"{pe_real:.1f}" if pe_real else "N/D",
-            f"{pvp_real:.1f}" if pvp_real else "N/D",
-            f"{ev_ebitda_real:.1f}" if ev_ebitda_real else "N/D",
-            fmt_pct(dividend_yield_real),
-        ],
-    })
-    st.dataframe(df_multiplos, use_container_width=True, hide_index=True)
-
-elif menu_opcao == "Comparacao Setorial":
-    st.title("🏭 Comparação Setorial & Benchmarking — Saúde & Farmacêutico")
-    st.markdown("Comparação em tempo real da Hypera Pharma (HYPE3) frente aos pares, via Yahoo Finance.")
-
-    linhas = []
-    for nome_par, tk_par in TICKERS_PARES.items():
-        info_par = carregar_info_par(tk_par)
-        linhas.append({
-            "Empresa / Ticker": nome_par,
-            "Margem Líquida (%)": round((info_par.get("profitMargins") or 0) * 100, 1),
-            "ROE (%)": round((info_par.get("returnOnEquity") or 0) * 100, 1),
-            "P/L": round(info_par.get("trailingPE"), 1) if info_par.get("trailingPE") else None,
-            "Dívida/Patrimônio": round(info_par.get("debtToEquity"), 1) if info_par.get("debtToEquity") else None,
-        })
-    df_setor_completo = pd.DataFrame(linhas)
-
-    st.subheader("📋 Tabela Comparativa de Pares (dados ao vivo)")
-    st.dataframe(df_setor_completo, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-    st.subheader("📊 Benchmarking: Margem Líquida vs ROE (real)")
-    fig_setor_bench = go.Figure(data=[
-        go.Bar(name='Margem Líquida (%)', x=df_setor_completo['Empresa / Ticker'], y=df_setor_completo['Margem Líquida (%)'], marker_color='#1f77b4'),
-        go.Bar(name='ROE (%)', x=df_setor_completo['Empresa / Ticker'], y=df_setor_completo['ROE (%)'], marker_color='#2ca02c')
+    tab_dre, tab_fco, tab_div, tab_prov, tab_val = st.tabs([
+        "📊 DRE & Desempenho", 
+        "💵 Fluxo de Caixa", 
+        "🏛️ Endividamento & Alavancagem", 
+        "💎 Proventos & Dividendos", 
+        "🧮 Valuation & Múltiplos"
     ])
-    fig_setor_bench.update_layout(barmode='group', template="plotly_dark", height=450, margin=dict(t=20, b=40, l=40, r=20), yaxis_title="Percentual (%)", xaxis_title="Empresas", legend=dict(x=0.85, y=0.95))
-    st.plotly_chart(fig_setor_bench, use_container_width=True)
 
-elif menu_opcao == "Alertas":
-    st.title("🚨 Central de Alertas & Monitoramento de Riscos — HYPE3")
-    st.markdown("Regras aplicadas sobre valores reais e calculados nas demais abas.")
+    with tab_dre:
+        st.subheader("Demonstração de Resultados (CVM & Yahoo Finance)")
+        if not df_cvm_real.empty:
+            st.success(f"Conexão CVM ativa: {len(df_cvm_real)} registros processados.")
+            colunas_disp = [c for c in ["CD_CVM", "DS_CONTA", "VL_CONTA", "DT_REFER", "DT_FIM_EXERC"] if c in df_cvm_real.columns]
+            st.dataframe(df_cvm_real[colunas_disp] if colunas_disp else df_cvm_real, use_container_width=True, hide_index=True)
+        else:
+            st.warning("Dados CVM temporariamente indisponíveis para este lote.")
 
-    ifr_atual = st.session_state.get('ifr_atual')
-    divida_liquida_ebitda_atual = st.session_state.get('divida_liquida_ebitda')
+        if serie_receita is not None or serie_lucro_liquido is not None:
+            c1, c2 = st.columns(2)
+            c1.metric("Receita Líquida (Mais Recente)", fmt_moeda_bi(valor_mais_recente(serie_receita)))
+            c2.metric("Lucro Líquido (Mais Recente)", fmt_moeda_bi(valor_mais_recente(serie_lucro_liquido)))
 
-    variacao_receita = None
-    if serie_receita is not None and len(serie_receita) > 1:
-        atual_r = serie_receita.iloc[0]
-        anterior_r = serie_receita.iloc[1]
-        if anterior_r:
-            variacao_receita = ((atual_r - anterior_r) / abs(anterior_r)) * 100
+    with tab_fco:
+        st.subheader("Dinâmica do Fluxo de Caixa")
+        fco = valor_mais_recente(serie_fco)
+        fci = valor_mais_recente(serie_fci)
+        fcf_livre = valor_mais_recente(serie_fcf_livre)
 
-    linhas_alerta = []
+        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1.metric("Caixa Operacional (FCO)", fmt_moeda_bi(fco))
+        col_f2.metric("Caixa de Investimento (FCI)", fmt_moeda_mi(fci))
+        col_f3.metric("Fluxo de Caixa Livre (FCF)", fmt_moeda_bi(fcf_livre))
 
-    def status_regra(valor, limite_min=None, limite_max=None):
-        if valor is None:
-            return "⚪ Sem dado"
-        if limite_max is not None and valor > limite_max:
-            return "🔴 Atenção"
-        if limite_min is not None and valor < limite_min:
-            return "🔴 Atenção"
-        return "🟢 Normal"
+        if fco is not None:
+            fig_dfc = go.Figure(data=[go.Bar(x=["FCO", "FCI", "FCF Livre"], y=[fco or 0, fci or 0, fcf_livre or 0], marker_color=['#2ca02c', '#d62728', '#00d2ff'])])
+            fig_dfc.update_layout(template="plotly_dark", height=350, margin=dict(t=20, b=20, l=40, r=20), yaxis_title="R$")
+            st.plotly_chart(fig_dfc, use_container_width=True)
 
-    linhas_alerta.append({
-        "Métrica": "Dívida Líquida / EBITDA",
-        "Limite": "> 3.00x",
-        "Valor Atual (real)": f"{divida_liquida_ebitda_atual:.2f}x" if divida_liquida_ebitda_atual is not None else "N/D",
-        "Status": status_regra(divida_liquida_ebitda_atual, limite_max=3.0)
-    })
-    linhas_alerta.append({
-        "Métrica": "IFR (14) — Sobrecompra/Sobrevenda",
-        "Limite": "> 70 ou < 30",
-        "Valor Atual (real)": f"{ifr_atual:.1f}" if ifr_atual is not None else "N/D",
-        "Status": status_regra(ifr_atual, limite_min=30, limite_max=70)
-    })
+    with tab_div:
+        st.subheader("Perfil de Endividamento & Alavancagem")
+        caixa_atual = total_cash_real if total_cash_real is not None else valor_mais_recente(serie_caixa)
+        divida_atual = total_debt_real if total_debt_real is not None else valor_mais_recente(serie_divida_total)
+        divida_liquida = (divida_atual - caixa_atual) if (divida_atual is not None and caixa_atual is not None) else None
+        
+        div_ebitda = (divida_liquida / ebitda_real) if (divida_liquida is not None and ebitda_real) else None
+        st.session_state['divida_liquida_ebitda'] = div_ebitda
 
-    df_alertas = pd.DataFrame(linhas_alerta)
-    st.dataframe(df_alertas, use_container_width=True, hide_index=True)
+        e1, e2, e3, e4 = st.columns(4)
+        e1.metric("Dívida Bruta", fmt_moeda_bi(divida_atual))
+        e2.metric("Caixa Total", fmt_moeda_bi(caixa_atual))
+        e3.metric("Dívida Líquida", fmt_moeda_bi(divida_liquida))
+        e4.metric("Dívida Líq. / EBITDA", f"{div_ebitda:.2f}x" if div_ebitda is not None else "N/D")
+
+        st.markdown("---")
+
+        col_g_div1, col_g_div2 = st.columns([1.2, 1])
+
+        with col_g_div1:
+            st.markdown("### 📊 Composição de Capital (R$ Bi)")
+            if divida_atual is not None and caixa_atual is not None:
+                comps = ["Dívida Bruta", "Caixa Total", "Dívida Líquida"]
+                vals = [divida_atual / 1e9, caixa_atual / 1e9, divida_liquida / 1e9]
+                cores = ['#ff4b4b', '#2ca02c', '#00d2ff']
+
+                fig_comp = go.Figure(data=[go.Bar(x=comps, y=vals, marker_color=cores, text=[f"R$ {v:.2f} Bi" for v in vals], textposition='auto')])
+                fig_comp.update_layout(template="plotly_dark", height=320, margin=dict(t=20, b=20, l=20, r=20), yaxis_title="R$ Bilhões")
+                st.plotly_chart(fig_comp, use_container_width=True)
+            else:
+                st.info("Dados insuficientes para gerar o gráfico de composição.")
+
+        with col_g_div2:
+            st.markdown("### 🎯 Termômetro de Alavancagem")
+            if div_ebitda is not None:
+                fig_gauge_div = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=div_ebitda,
+                    number={'suffix': "x"},
+                    gauge={
+                        'axis': {'range': [0, 5], 'tickwidth': 1, 'tickcolor': "white"},
+                        'bar': {'color': "#00d2ff"},
+                        'bgcolor': "rgba(0,0,0,0)",
+                        'borderwidth': 2,
+                        'bordercolor': "gray",
+                        'steps': [
+                            {'range': [0, 2.5], 'color': "rgba(46, 160, 67, 0.3)"},
+                            {'range': [2.5, 3.5], 'color': "rgba(255, 127, 14, 0.3)"},
+                            {'range': [3.5, 5], 'color': "rgba(255, 75, 75, 0.3)"}
+                        ],
+                        'threshold': {
+                            'line': {'color': "red", 'width': 4},
+                            'thickness': 0.75,
+                            'value': 3.0
+                        }
+                    }
+                ))
+                fig_gauge_div.update_layout(template="plotly_dark", height=320, margin=dict(t=30, b=10, l=20, r=20))
+                st.plotly_chart(fig_gauge_div, use_container_width=True)
+            else:
+                st.info("Métrica de alavancagem indisponível no momento.")
+
+    with tab_prov:
+        st.subheader("Retorno via Proventos")
+        pA, pB, pC = st.columns(3)
+        pA.metric("Dividend Yield (Atual)", fmt_pct(dividend_yield_real))
+        pB.metric("Payout Ratio", fmt_pct(payout_real))
+        pC.metric("Total de Pagamentos Históricos", str(len(df_dividendos_real)) if not df_dividendos_real.empty else "0")
+
+        if not df_dividendos_real.empty:
+            st.dataframe(df_dividendos_real.sort_values("Data", ascending=False).head(10), use_container_width=True, hide_index=True)
+
+    with tab_val:
+        st.subheader("Valuation Interativo (Modelo de Gordon)")
+        fco_def = fco if 'fco' in locals() and fco else 2_000_000_000.0
+        
+        v1, v2, v3 = st.columns(3)
+        base_fco = v1.number_input("Base de Caixa (R$)", value=float(fco_def), step=100_000_000.0)
+        wacc = v2.slider("WACC (%)", 5.0, 20.0, 11.5, 0.5)
+        g = v3.slider("Crescimento (g %)", 0.0, 6.0, 3.0, 0.5)
+
+        if st.button("Calcular Valuation Intrínseco"):
+            if wacc > g:
+                firma = base_fco / ((wacc - g) / 100.0)
+                st.success(f"Valor Intrínseco Estimado da Firma: R$ {firma:,.2f}")
+            else:
+                st.error("WACC precisa ser superior à taxa de crescimento (g).")
+
+        st.markdown("---")
+        st.dataframe(pd.DataFrame({
+            "Múltiplo": ["P/L", "P/VP", "EV/EBITDA"],
+            "Atual (Real)": [
+                f"{pe_real:.1f}x" if pe_real else "N/D",
+                f"{pvp_real:.1f}x" if pvp_real else "N/D",
+                f"{ev_ebitda_real:.1f}x" if ev_ebitda_real else "N/D"
+            ]
+        }), use_container_width=True, hide_index=True)
 
 elif menu_opcao == "Hypera AI Analyst":
     st.title("🧠 Hypera AI Analyst — Assistente Baseado em Regras (dados reais)")
@@ -1069,7 +1035,7 @@ elif menu_opcao == "Hypera AI Analyst":
 
 elif menu_opcao == "Anomalias":
     st.title("🔎 Detecção de Anomalias & Outliers — HYPE3")
-    st.markdown("Cálculo real de Z-Score sobre os retornos diários de preço (não é mais um texto fixo).")
+    st.markdown("Cálculo estatístico de Z-Score cruzado com fatos relevantes da CVM (Governança e Eventos Corporativos).")
 
     if not df_mercado_real.empty:
         retornos = df_mercado_real['Close'].pct_change().dropna()
@@ -1081,16 +1047,33 @@ elif menu_opcao == "Anomalias":
         anomalias_detectadas = z_scores[abs(z_scores) > limiar]
 
         col1, col2, col3 = st.columns(3)
-        col1.metric(label="Anomalias Detectadas (Z-Score, período carregado)", value=str(len(anomalias_detectadas)))
-        col2.metric(label="Método", value="Z-Score sobre retornos diários")
-        col3.metric(label="Limiar", value=f"|Z| > {limiar}")
+        col1.metric(label="Anomalias Detectadas (Z-Score)", value=str(len(anomalias_detectadas)))
+        col2.metric(label="Método Estatístico", value="Z-Score sobre Retornos Diários")
+        col3.metric(label="Limiar de Volatilidade", value=f"|Z| > {limiar}")
 
         st.markdown("---")
+        st.subheader("📋 Tabela de Anomalias com Cruzamento de Fatos Relevantes (CVM)")
+
         if not anomalias_detectadas.empty:
             df_anom = df_mercado_real.loc[anomalias_detectadas.index, ["Date", "Close"]].copy()
             df_anom["Retorno Diário (%)"] = (retornos.loc[anomalias_detectadas.index] * 100).round(2)
             df_anom["Z-Score"] = z_scores.loc[anomalias_detectadas.index].round(2)
-            st.dataframe(df_anom, use_container_width=True, hide_index=True)
+            df_anom["Data_Fmt"] = pd.to_datetime(df_anom["Date"]).dt.date
+
+            if not df_fatos_relevantes.empty:
+                col_data_cvm = next((c for c in ["Data_Entrega", "DT_RECEB", "Data_Referencia"] if c in df_fatos_relevantes.columns), None)
+                if col_data_cvm:
+                    df_fatos_relevantes["Data_Fmt"] = pd.to_datetime(df_fatos_relevantes[col_data_cvm]).dt.date
+                    df_anom = pd.merge(df_anom, df_fatos_relevantes[["Data_Fmt", "Assunto", "Categoria"]], on="Data_Fmt", how="left")
+                    df_anom["Evento CVM Associado"] = df_anom["Assunto"].fillna("Nenhum fato relevante protocolado nesta data")
+                else:
+                    df_anom["Evento CVM Associado"] = "Dataset CVM sem coluna de data compatível"
+            else:
+                df_anom["Evento CVM Associado"] = "Sem feed CVM ativo no momento"
+
+            colunas_exibir = ["Date", "Close", "Retorno Diário (%)", "Z-Score", "Evento CVM Associado"]
+            st.dataframe(df_anom[[c for c in colunas_exibir if c in df_anom.columns]], use_container_width=True, hide_index=True)
+            st.caption("🔍 Nota: O cruzamento busca alinhar oscilações de preço anômalas com comunicados oficiais protocolados na CVM no mesmo dia útil.")
         else:
             st.success("Nenhuma anomalia estatística (|Z| > 2.5) detectada nos retornos diários do período carregado.")
     else:
@@ -1100,38 +1083,298 @@ elif menu_opcao == "Forecast":
     st.title("🔮 Projeções & Forecast Financeiro — HYPE3")
     st.markdown("Regressão linear real sobre a série histórica de Receita e Lucro Líquido (Yahoo Finance).")
 
-    if serie_receita is not None and len(serie_receita) >= 2:
-        anos_idx = np.arange(len(serie_receita))[::-1]  # mais antigo = 0
-        receita_vals = serie_receita.values[::-1]
-        coef_receita = np.polyfit(anos_idx, receita_vals, 1)
-        proximo_periodo = len(serie_receita)
-        receita_projetada = np.polyval(coef_receita, proximo_periodo)
+    if serie_receita is not None and not serie_receita.dropna().empty:
+        serie_rec_limpa = serie_receita.dropna().sort_index()
+        
+        if len(serie_rec_limpa) >= 2:
+            anos_idx = np.arange(len(serie_rec_limpa))
+            receita_vals = serie_rec_limpa.values.astype(float)
+            
+            coef_receita = np.polyfit(anos_idx, receita_vals, 1)
+            proximo_idx = len(serie_rec_limpa)
+            receita_projetada = float(np.polyval(coef_receita, proximo_idx))
 
-        lucro_projetado = None
-        if serie_lucro_liquido is not None and len(serie_lucro_liquido) >= 2:
-            lucro_vals = serie_lucro_liquido.values[::-1]
-            coef_lucro = np.polyfit(np.arange(len(lucro_vals)), lucro_vals, 1)
-            lucro_projetado = np.polyval(coef_lucro, len(lucro_vals))
+            lucro_projetado = None
+            if serie_lucro_liquido is not None and not serie_lucro_liquido.dropna().empty:
+                serie_lucro_limpo = serie_lucro_liquido.dropna().sort_index()
+                if len(serie_lucro_limpo) >= 2:
+                    lucro_vals = serie_lucro_limpo.values.astype(float)
+                    coef_lucro = np.polyfit(np.arange(len(lucro_vals)), lucro_vals, 1)
+                    lucro_projetado = float(np.polyval(coef_lucro, len(lucro_vals)))
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric(label="Receita Projetada (Próx. Período)", value=fmt_moeda_bi(receita_projetada))
-        col2.metric(label="Lucro Líquido Projetado", value=fmt_moeda_bi(lucro_projetado))
-        col3.metric(label="Modelo", value="Regressão Linear (real, numpy.polyfit)")
+            col1, col2, col3 = st.columns(3)
+            col1.metric(label="Receita Projetada (Próx. Período)", value=fmt_moeda_bi(receita_projetada))
+            col2.metric(label="Lucro Líquido Projetado", value=fmt_moeda_bi(lucro_projetado))
+            col3.metric(label="Modelo", value="Regressão Linear (real, numpy.polyfit)")
 
-        st.markdown("---")
-        st.subheader("📈 Série Histórica Real + Projeção")
-        datas_hist = [str(c.date()) if hasattr(c, "date") else str(c) for c in serie_receita.index][::-1]
-        fig_f = go.Figure()
-        fig_f.add_trace(go.Scatter(x=datas_hist, y=receita_vals, name="Receita Líquida (real)", line=dict(color="#00d2ff", width=2), mode='lines+markers'))
-        fig_f.add_trace(go.Scatter(x=datas_hist + ["Projeção"], y=list(receita_vals) + [receita_projetada], name="Projeção (linear)", line=dict(color="#ff7f0e", width=2, dash="dash"), mode='lines+markers'))
-        fig_f.update_layout(template="plotly_dark", height=400, margin=dict(t=20, b=20, l=40, r=20), yaxis_title="R$", xaxis_title="Período")
-        st.plotly_chart(fig_f, use_container_width=True)
-        st.caption(
-            "Projeção baseada em regressão linear simples sobre poucos pontos históricos anuais disponíveis "
-            "via Yahoo Finance — trate como indicativo de tendência, não como previsão robusta (não é ARIMA)."
-        )
+            st.markdown("---")
+            st.subheader("📈 Série Histórica Real + Projeção Futura")
+            
+            datas_hist = [str(c.date()) if hasattr(c, "date") else str(c) for c in serie_rec_limpa.index]
+            
+            ultima_data = pd.to_datetime(serie_rec_limpa.index[-1])
+            proxima_data_str = (ultima_data + pd.DateOffset(years=1)).strftime('%Y-%m-%d')
+
+            datas_proj = datas_hist + [proxima_data_str]
+            valores_proj = list(receita_vals) + [receita_projetada]
+
+            fig_f = go.Figure()
+            fig_f.add_trace(go.Scatter(
+                x=datas_hist, y=receita_vals, 
+                name="Receita Líquida (Real)", 
+                line=dict(color="#00d2ff", width=3), 
+                mode='lines+markers'
+            ))
+            fig_f.add_trace(go.Scatter(
+                x=datas_proj, y=valores_proj, 
+                name="Projeção (Tendência Linear)", 
+                line=dict(color="#ff7f0e", width=3, dash="dash"), 
+                mode='lines+markers'
+            ))
+            
+            fig_f.update_layout(
+                template="plotly_dark", 
+                height=420, 
+                margin=dict(t=20, b=20, l=40, r=20), 
+                yaxis_title="R$ (Bilhões)", 
+                xaxis_title="Período de Referência",
+                legend=dict(x=0.02, y=0.98)
+            )
+            st.plotly_chart(fig_f, use_container_width=True)
+            st.caption(
+                "Projeção baseada em regressão linear simples sobre o histórico de demonstrativos disponíveis "
+                "via Yahoo Finance — serve como indicador de tendência estatística para a análise."
+            )
+        else:
+            st.warning("Dados históricos insuficientes para calcular a regressão linear.")
     else:
-        st.warning("Histórico insuficiente de receita disponível via Yahoo Finance para gerar uma projeção real.")
+        st.warning("Série de receita indisponível no momento via Yahoo Finance.")
+
+elif menu_opcao == "Relatório Diretoria":
+    st.title("🎯 Relatório Executivo & Apresentação para a Diretoria — HYPE3")
+    st.markdown("Painel de exportação profissional: gere arquivos limpos em formato executivo e apresentações em PowerPoint prontas para uso.")
+
+    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+    preco_atual_dir = info_hypera.get("currentPrice") or info_hypera.get("regularMarketPrice")
+    col_d1.metric("Preço Atual (B3)", f"R$ {preco_atual_dir:.2f}" if preco_atual_dir else "N/D")
+    col_d2.metric("Valor de Mercado", fmt_moeda_bi(info_hypera.get("marketCap")))
+    col_d3.metric("ROE Real", fmt_pct(roe_real))
+    col_d4.metric("Margem Líquida", fmt_pct(margem_liq_real))
+
+    st.markdown("---")
+    st.subheader("📋 Resumo Executivo Consolidado")
+
+    df_resumo_diretoria = pd.DataFrame([
+        {"Indicador Executivo": "Ticker Principal", "Valor Atual (Tempo Real)": "HYPE3.SA (Hypera S.A.)"},
+        {"Indicador Executivo": "Código CVM", "Valor Atual (Tempo Real)": str(CD_CVM_HYPERA)},
+        {"Indicador Executivo": "Múltiplo P/L", "Valor Atual (Tempo Real)": f"{pe_real:.1f}x" if pe_real else "N/D"},
+        {"Indicador Executivo": "Múltiplo P/VP", "Valor Atual (Tempo Real)": f"{pvp_real:.1f}x" if pvp_real else "N/D"},
+        {"Indicador Executivo": "Múltiplo EV/EBITDA", "Valor Atual (Tempo Real)": f"{ev_ebitda_real:.1f}x" if ev_ebitda_real else "N/D"},
+        {"Indicador Executivo": "Dividend Yield", "Valor Atual (Tempo Real)": fmt_pct(dividend_yield_real)},
+        {"Indicador Executivo": "Dívida Líquida / EBITDA", "Valor Atual (Tempo Real)": f"{st.session_state.get('divida_liquida_ebitda', 0):.2f}x" if st.session_state.get('divida_liquida_ebitda') else "N/D"},
+        {"Indicador Executivo": "Status ISE B3 (ESG)", "Valor Atual (Tempo Real)": "Ativo" if hypera_no_ise else "Inativo"},
+        {"Indicador Executivo": "Status ICO2 B3 (Carbono)", "Valor Atual (Tempo Real)": "Ativo" if hypera_no_ico2 else "Inativo"}
+    ])
+
+    st.dataframe(df_resumo_diretoria, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    st.subheader("📥 Central de Exportação Profissional")
+
+    col_exp1, col_exp2 = st.columns(2)
+
+    with col_exp1:
+        st.markdown("#### 📄 Exportar Tabela Executiva (CSV)")
+        st.markdown("Arquivo formatado corretamente com codificação UTF-8 para visualização perfeita no Excel.")
+        csv_diretoria = df_resumo_diretoria.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button(
+            label="📥 Baixar Dados Executivos (CSV)",
+            data=csv_diretoria,
+            file_name=f"Relatorio_Diretoria_Hypera_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+        )
+
+    with col_exp2:
+        st.markdown("#### 📊 Gerar Apresentação PowerPoint Corporativa (.pptx)")
+        st.markdown("Criação automatizada de slides com layout moderno, caixas de destaque e logotipo oficial.")
+
+        def gerar_apresentacao_profissional_pptx():
+            prs = Presentation()
+            prs.slide_width = Inches(13.333)
+            prs.slide_height = Inches(7.5)
+            
+            # Cores Corporativas
+            COR_AZUL_FUNDO = RGBColor(10, 25, 47)      # Azul executivo escuro
+            COR_CINZA_CLARO = RGBColor(245, 247, 250)  # Fundo leve
+            COR_TEXTO_ESCURO = RGBColor(30, 41, 59)    # Texto primário
+            COR_BRANCO = RGBColor(255, 255, 255)
+            COR_AZUL_DESTAQUE = RGBColor(0, 130, 200)
+
+            # Baixar Logotipo Oficial da Hypera Pharma de forma dinâmica
+            logo_bytes = None
+            try:
+                logo_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Hypera_Pharma_logo.svg/512px-Hypera_Pharma_logo.svg.png"
+                resp = requests.get(logo_url, timeout=5)
+                if resp.status_code == 200:
+                    logo_bytes = io.BytesIO(resp.content)
+            except Exception:
+                pass
+
+            blank_layout = prs.slide_layouts[6] # Layout totalmente em branco
+
+            # ================= SLIDE 1: CAPA =================
+            slide1 = prs.slides.add_slide(blank_layout)
+            bg1 = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+            bg1.fill.solid()
+            bg1.fill.fore_color.rgb = COR_AZUL_FUNDO
+            bg1.line.fill.background()
+
+            if logo_bytes:
+                slide1.shapes.add_picture(logo_bytes, Inches(1.2), Inches(1.2), width=Inches(2.5))
+
+            # Título da Capa
+            txBox1 = slide1.shapes.add_textbox(Inches(1.2), Inches(3.0), Inches(11.0), Inches(3.0))
+            tf1 = txBox1.text_frame
+            tf1.word_wrap = True
+            
+            p1 = tf1.paragraphs[0]
+            p1.text = "Hypera Analytics (HYPE3)"
+            p1.font.size = Pt(40)
+            p1.font.bold = True
+            p1.font.color.rgb = COR_BRANCO
+
+            p1_sub = tf1.add_paragraph()
+            p1_sub.text = f"Relatório Executivo para a Diretoria • Projeto Integrador 3\nGerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+            p1_sub.font.size = Pt(18)
+            p1_sub.font.color.rgb = RGBColor(148, 163, 184)
+            p1_sub.space_before = Pt(15)
+
+            # Função auxiliar para slides internos padronizados
+            def criar_slide_padrao(titulo_texto):
+                s = prs.slides.add_slide(blank_layout)
+                
+                # Fundo claro
+                bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+                bg.fill.solid()
+                bg.fill.fore_color.rgb = COR_CINZA_CLARO
+                bg.line.fill.background()
+
+                # Barra superior de cabeçalho
+                header_bar = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(1.1))
+                header_bar.fill.solid()
+                header_bar.fill.fore_color.rgb = COR_AZUL_FUNDO
+                header_bar.line.fill.background()
+
+                # Título no cabeçalho
+                tb_tit = s.shapes.add_textbox(Inches(0.8), Inches(0.2), Inches(9.0), Inches(0.8))
+                tf_tit = tb_tit.text_frame
+                pt = tf_tit.paragraphs[0]
+                pt.text = titulo_texto
+                pt.font.size = Pt(26)
+                pt.font.bold = True
+                pt.font.color.rgb = COR_BRANCO
+
+                # Logotipo no canto superior direito
+                if logo_bytes:
+                    logo_bytes.seek(0)
+                    s.shapes.add_picture(logo_bytes, Inches(11.2), Inches(0.25), width=Inches(1.5))
+
+                return s
+
+            # ================= SLIDE 2: DESTAQUES FINANCEIROS =================
+            slide2 = criar_slide_padrao("Destaques Financeiros & Mercado (Tempo Real)")
+            
+            # Criar 4 cartões de métricas
+            metricas_s2 = [
+                ("Preço Atual (B3)", f"R$ {preco_atual_dir:.2f}" if preco_atual_dir else "N/D"),
+                ("Valor de Mercado", fmt_moeda_bi(info_hypera.get('marketCap'))),
+                ("Rentabilidade (ROE)", fmt_pct(roe_real)),
+                ("Margem Líquida", fmt_pct(margem_liq_real))
+            ]
+
+            left_pos = Inches(0.8)
+            for rotulo, valor in metricas_s2:
+                card = slide2.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_pos, Inches(2.0), Inches(2.7), Inches(4.5))
+                card.fill.solid()
+                card.fill.fore_color.rgb = COR_BRANCO
+                card.line.color.rgb = RGBColor(203, 213, 225)
+
+                tf_card = card.text_frame
+                tf_card.word_wrap = True
+                
+                p_rot = tf_card.paragraphs[0]
+                p_rot.text = rotulo.upper()
+                p_rot.font.size = Pt(13)
+                p_rot.font.bold = True
+                p_rot.font.color.rgb = COR_AZUL_DESTAQUE
+                p_rot.alignment = PP_ALIGN.CENTER
+                p_rot.space_before = Pt(20)
+
+                p_val = tf_card.add_paragraph()
+                p_val.text = str(valor)
+                p_val.font.size = Pt(24)
+                p_val.font.bold = True
+                p_val.font.color.rgb = COR_TEXTO_ESCURO
+                p_val.alignment = PP_ALIGN.CENTER
+                p_val.space_before = Pt(30)
+
+                left_pos += Inches(3.0)
+
+            # ================= SLIDE 3: ALAVANCAGEM E GOVERNANÇA =================
+            slide3 = criar_slide_padrao("Perfil de Alavancagem & Governança Corporativa (ESG)")
+            
+            div_ebitda_val = st.session_state.get('divida_liquida_ebitda')
+            metricas_s3 = [
+                ("Dívida Líquida / EBITDA", f"{div_ebitda_val:.2f}x" if div_ebitda_val else "N/D", "Limite prudencial de mercado: 3.0x"),
+                ("Índice ISE B3 (ESG)", "Ativo" if hypera_no_ise else "Inativo", "Governança e Sustentabilidade Empresarial"),
+                ("Índice ICO2 B3", "Ativo" if hypera_no_ico2 else "Inativo", "Eficiência e Baixo Carbono")
+            ]
+
+            left_pos3 = Inches(0.8)
+            for tit, val, desc in metricas_s3:
+                card3 = slide3.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_pos3, Inches(2.0), Inches(3.8), Inches(3.64))
+                card3.fill.solid()
+                card3.fill.fore_color.rgb = COR_BRANCO
+                card3.line.color.rgb = RGBColor(203, 213, 225)
+
+                tf_c3 = card3.text_frame
+                tf_c3.word_wrap = True
+
+                p_t3 = tf_c3.paragraphs[0]
+                p_t3.text = tit
+                p_t3.font.size = Pt(16)
+                p_t3.font.bold = True
+                p_t3.font.color.rgb = COR_AZUL_DESTAQUE
+                p_t3.space_before = Pt(15)
+
+                p_v3 = tf_c3.add_paragraph()
+                p_v3.text = val
+                p_v3.font.size = Pt(28)
+                p_v3.font.bold = True
+                p_v3.font.color.rgb = COR_TEXTO_ESCURO
+                p_v3.space_before = Pt(20)
+
+                p_d3 = tf_c3.add_paragraph()
+                p_d3.text = desc
+                p_d3.font.size = Pt(12)
+                p_d3.font.color.rgb = RGBColor(100, 116, 139)
+                p_d3.space_before = Pt(20)
+
+                left_pos3 += Inches(4.0)
+
+            # Salvar em BytesIO
+            ppt_io = io.BytesIO()
+            prs.save(ppt_io)
+            ppt_io.seek(0)
+            return ppt_io.getvalue()
+
+        pptx_bytes = gerar_apresentacao_profissional_pptx()
+        st.download_button(
+            label="📥 Baixar Apresentação Corporativa (.pptx)",
+            data=pptx_bytes,
+            file_name=f"Apresentacao_Corporativa_Hypera_{datetime.now().strftime('%Y%m%d')}.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
 
 elif menu_opcao == "Data Pipeline":
     st.markdown("### ⚙️ Arquitetura & Status do Data Pipeline")
