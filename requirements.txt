@@ -1,8 +1,7 @@
-streamlit
 pandas
 numpy
-plotly
+streamlit
 yfinance
+plotly
 requests
-pytrends
-python-pptx
+google-genai
